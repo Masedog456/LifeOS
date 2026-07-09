@@ -23,9 +23,19 @@ npm run build   # production build
 npm run lint    # lint check
 ```
 
-## Project memory
+## Project memory & foundation docs
 
-See [PROJECT_MEMORY.md](./PROJECT_MEMORY.md) for current project state, what's
-next, and the change log. See [VISION.md](./VISION.md) for product
-direction. Both are provisional drafts pending final Product Owner
+- [PROJECT_MEMORY.md](./PROJECT_MEMORY.md) — current project state, what's
+  next, and the change log
+- [VISION.md](./VISION.md) — product direction
+- [PRINCIPLES.md](./PRINCIPLES.md) — product principles that constrain
+  design and engineering decisions
+- [ONTOLOGY.md](./ONTOLOGY.md) — the first-class objects LifeOS is built
+  around
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — proposed technical architecture
+  (design/spec only — nothing here is implemented yet)
+- [AI_AGENT_RULES.md](./AI_AGENT_RULES.md) — rules AI agents must follow
+  when working on this codebase
+
+All of the above are provisional drafts pending final Product Owner
 sign-off (see the notice at the top of each file).

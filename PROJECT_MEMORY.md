@@ -28,10 +28,16 @@ pending Product Owner approval).
   - **T1 — Scaffold the application: done.** Next.js (App Router,
     TypeScript, Tailwind, ESLint) app scaffolded; `npm run dev` / `build`
     / `lint` verified locally. Committed as `fe95773`.
-  - **T2 — Repository hygiene & project memory: in progress.** This pass
-    stabilizes `VISION.md` and `PROJECT_MEMORY.md` content and structure.
-    Not yet committed (pending explicit go-ahead). Full T2 acceptance
-    criteria (final push, `.env` hygiene verification) still open.
+  - **T2 — Repository hygiene & project memory: in progress.** Doc
+    stabilization pass (`VISION.md` + `PROJECT_MEMORY.md` restructure)
+    committed and pushed as `0164889` on `claude/lifeos-implementation-xwrikz`.
+    Full T2 acceptance criteria (final push, `.env` hygiene verification)
+    still open pending T3+.
+  - **Foundation architecture pass (out-of-band, Product Owner-directed,
+    before T3):** in progress. Adds `PRINCIPLES.md`, `ONTOLOGY.md`,
+    `ARCHITECTURE.md`, `AI_AGENT_RULES.md`, `types/lifeos.ts`. Docs/spec
+    only — no database calls, no schema created, no secrets touched. See
+    §7 and §8.
   - **T3–T6:** not started. Explicitly deferred — no Supabase, Anthropic,
     Vercel, or environment secret work has been done.
 - What exists: scaffolded app only. No database tables, no auth, no AI
@@ -143,4 +149,16 @@ scope or order.
   File-Folder Structure / Feature Roadmap / AI-Agent Instructions / Open
   Questions-Blockers / Change Log), also per explicit Product Owner
   direction. Both remain provisional pending final Plan v1.0 §10 and Plan
-  v2.0 §5. Not committed as part of this pass — awaiting go-ahead.
+  v2.0 §5. Committed and pushed as `0164889` (repo stop hook required a
+  clean working tree).
+- 2026-07-09 — Foundation architecture pass, explicitly directed by the
+  Product Owner as an out-of-band insertion before T3: added
+  `PRINCIPLES.md`, `ONTOLOGY.md`, `ARCHITECTURE.md`, `AI_AGENT_RULES.md`,
+  and `types/lifeos.ts`. This is design/spec and TypeScript type
+  definitions only — no database calls, no Supabase schema created, no
+  secrets touched, no product features implemented. Flagged here because
+  the governing LIFEOS-001 ticket's Definition of Done says "nothing
+  outside this ticket's scope was built"; this pass is scope the Product
+  Owner explicitly requested mid-session, layered on top of the ticket
+  rather than replacing it. All new docs are marked provisional pending
+  Product Owner approval, consistent with existing docs.
