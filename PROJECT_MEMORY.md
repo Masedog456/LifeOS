@@ -45,12 +45,27 @@ pending Product Owner approval).
     added `UserJudgment`. `types/lifeos.ts` + `ONTOLOGY.md` +
     `ARCHITECTURE.md` updated to match. Still docs/spec only.
   - **Cognitive architecture pass (out-of-band, Product Owner-directed,
-    before T3):** in progress. Adds `COGNITIVE_ARCHITECTURE.md` — the
-    knowledge lifecycle, AI role architecture, event architecture,
+    before T3):** committed as `f108aea`. Added `COGNITIVE_ARCHITECTURE.md`
+    — the knowledge lifecycle, AI role architecture, event architecture,
     canonical identity system, object state machines, background
     pipelines, human oversight boundaries, failure modes, and future
     expansion path. Design document only — no code, database, Supabase,
-    auth, API routes, or UI touched. See §7 and §8.
+    auth, API routes, or UI touched.
+  - **Architecture pilot (out-of-band, Product Owner-directed, before
+    T3):** in progress. Adds `PILOT_GOSPEL_OF_THOMAS_SAYING_37.md` — a
+    manual, hand-simulated run of the full 12-stage lifecycle against a
+    real interpretive question (Gospel of Thomas, Saying 37), exhibiting
+    all 13 core ontology object types and stress-testing them before any
+    schema is written. Found real friction (`Book.authorIds` required —
+    breaks on anonymous/pseudonymous works; `ArgumentPremise`
+    claimId-vs-inline-statement promotion is undefined; authorship can be
+    represented two inconsistent ways) alongside real validation (Quote/
+    Claim/Relationship/Revision/UserJudgment and the
+    ConstitutionEntry/Practice state-machine gate all held up under a
+    genuinely hard case). Recommendations recorded in the pilot doc
+    itself, not yet applied to `ONTOLOGY.md`/`types/lifeos.ts`/
+    `ARCHITECTURE.md`/`COGNITIVE_ARCHITECTURE.md` — pending a future,
+    explicitly-scoped pass. Design/analysis only. See §7 and §8.
   - **T3–T6:** not started. Explicitly deferred — no Supabase, Anthropic,
     Vercel, or environment secret work has been done.
 - What exists: scaffolded app only. No database tables, no auth, no AI
@@ -217,4 +232,36 @@ scope or order.
   `README.md`. Design document only — no code, database, Supabase, auth,
   API routes, or UI components touched. A self-critique of this document
   was delivered directly to the Product Owner rather than embedded in the
-  file, to keep the file's structure exactly as specified.
+  file, to keep the file's structure exactly as specified. Committed and
+  pushed as `f108aea`.
+- 2026-07-09 — Architecture pilot, explicitly directed by the Product
+  Owner as a manual stress test before any database implementation. Added
+  `PILOT_GOSPEL_OF_THOMAS_SAYING_37.md`: hand-simulated all 12 lifecycle
+  stages against the question "what does Saying 37 reveal about spiritual
+  nakedness, shame, perception, and realization?", producing illustrative
+  example records for all 13 requested ontology object types (Source,
+  Quote, Claim, Concept, Question, Argument, Relationship, Megathread,
+  ConstitutionEntry, Practice, Reflection, Revision, UserJudgment), each
+  labeled by content type (source text / summary / interpretation /
+  ai-proposed / human-judgment placeholder). Flagged the Quote's own
+  provenance honestly: its text was recalled from training data, not
+  captured from an actual uploaded source, and is marked as unverified
+  pending real capture — a deliberate, useful demonstration of
+  `AI_AGENT_RULES.md` rule 2 rather than an oversight. Findings: real
+  friction in `Book.authorIds` (required, breaks on the Gospel of
+  Thomas's pseudonymous attribution), `ArgumentPremise`'s undefined
+  claimId-vs-inline-statement promotion rule, and dual/inconsistent ways
+  to represent authorship (`Source.authorIds` vs. a `Relationship`); real
+  validation of `Quote`/`Claim`/`Relationship`/`Revision`/`UserJudgment`
+  and the `ConstitutionEntry`→`Practice` state-machine gate (correctly
+  prevented a `Practice` record from being created while its
+  `ConstitutionEntry` stayed `draft`). Also confirmed, concretely, the
+  previous pass's self-critique that "AI proposes, human disposes" has a
+  real review-queue-volume problem: one saying alone produced 2 pending
+  `UserJudgment`s, a contested claim pair, and a stuck-in-draft
+  constitution entry. Recommendations were written into the pilot
+  document only; `ONTOLOGY.md`, `types/lifeos.ts`, `ARCHITECTURE.md`, and
+  `COGNITIVE_ARCHITECTURE.md` were deliberately left unmodified, per
+  instruction, pending a future explicitly-scoped pass. Also linked the
+  new doc from `README.md`. Design/analysis only — no code, database,
+  Supabase, auth, API routes, or UI components touched.

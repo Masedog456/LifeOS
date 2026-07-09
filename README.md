@@ -39,6 +39,9 @@ npm run lint    # lint check
   (design/spec only — nothing here is implemented yet)
 - [AI_AGENT_RULES.md](./AI_AGENT_RULES.md) — rules AI agents must follow
   when working on this codebase
+- [PILOT_GOSPEL_OF_THOMAS_SAYING_37.md](./PILOT_GOSPEL_OF_THOMAS_SAYING_37.md)
+  — a manual pilot walkthrough stress-testing the ontology and cognitive
+  architecture against a real use case, with findings and recommendations
 
 All of the above are provisional drafts pending final Product Owner
 sign-off (see the notice at the top of each file).
