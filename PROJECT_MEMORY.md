@@ -61,16 +61,28 @@ pending Product Owner approval).
     claimId-vs-inline-statement promotion undefined; authorship
     representable two inconsistent ways) alongside real validation.
   - **Pilot lessons applied (out-of-band, Product Owner-directed, before
-    T3):** in progress. **All Gospel of Thomas pilot findings now
-    applied**: `Book.authorIds` is optional, `authorAttribution` added to
+    T3):** committed as `8613477`. All Gospel of Thomas pilot findings
+    applied: `Book.authorIds` optional, `authorAttribution` added to
     `Source` (types + `ONTOLOGY.md` authorship representation rule);
-    `ONTOLOGY.md` now has an `Argument` premise-promotion rule;
-    `COGNITIVE_ARCHITECTURE.md` has pilot notes on Classify/Compare/
-    Synthesize stage granularity plus a trust-tiering future design
-    spike under §8; `ARCHITECTURE.md` marks `confidence` uncalibrated and
-    unsafe for UI/gating/automated belief or Constitution/Practice
-    changes. Still docs/types only — no database, Supabase, auth, API
-    routes, or UI touched. See §7 and §8.
+    `ONTOLOGY.md` `Argument` premise-promotion rule; pilot notes +
+    trust-tiering spike in `COGNITIVE_ARCHITECTURE.md`; `confidence`
+    marked uncalibrated in `ARCHITECTURE.md`.
+  - **Adversarial product review + UX design freeze (out-of-band,
+    Product Owner-directed, before T3):** in progress. A brutal external
+    review (delivered in chat, not filed) recommended **NARROW**: freeze
+    the docs, ship the boring LIFEOS-001 deploy, then build the minimal
+    "belief ledger" and use it on a real book before writing more
+    architecture. Following that, a Product Design Freeze produced
+    `UX_SPECIFICATION.md` — the MVP interaction blueprint scoped to
+    exactly three screens (Capture, Belief Inbox, Constitution), plus a
+    ruthless six-week MoSCoW cut that REMOVEs most of the ontology's
+    speculative objects and all of `COGNITIVE_ARCHITECTURE.md`'s
+    pipeline/role/event machinery from MVP scope (deferred, not deleted).
+    Design/spec only — no code, database, Supabase, auth, API routes, or
+    UI components. See §7 and §8. **Note:** the review and UX spec are
+    advisory design artifacts; they do not themselves change the frozen
+    architecture or the `ONTOLOGY.md`/`types` on disk — any actual
+    narrowing of the build is a future Product-Owner decision.
   - **T3–T6:** not started. Explicitly deferred — no Supabase, Anthropic,
     Vercel, or environment secret work has been done.
 - What exists: scaffolded app only. No database tables, no auth, no AI
@@ -303,4 +315,34 @@ scope or order.
   UI sorting/filtering/gating, review-queue auto-triage, or to drive any
   automated belief, `ConstitutionEntry`, or `Practice` change. Still
   docs/types only — no database calls, no Supabase schema created, no
-  secrets touched, no API routes or UI components created.
+  secrets touched, no API routes or UI components created. Committed and
+  pushed as `8613477`.
+- 2026-07-09 — Adversarial product review (delivered in chat, not filed
+  to the repo) at Product Owner request: a deliberately skeptical
+  external-architect critique concluding **NARROW** — freeze the docs,
+  finish the LIFEOS-001 deploy, build the minimal "belief ledger" (paste
+  → AI-proposed claims → human accept/rewrite/reject/question →
+  Constitution page with provenance chains), and use it on a real book
+  for two weeks before any further architecture. Flagged that the repo is
+  currently exhibiting its own §1 failure mode (much architecture, zero
+  usage) and that "AI proposes, human disposes" review-volume is the
+  central viability question, not a refinement.
+- 2026-07-09 — Product Design Freeze at Product Owner request: added
+  `UX_SPECIFICATION.md`, the MVP interaction blueprint. Scopes the entire
+  MVP to exactly three screens — Capture (frictionless immutable intake),
+  Belief Inbox (one-card-at-a-time judgment, with inline Rewrite as the
+  hero action because rewriting-in-your-own-words is where information
+  becomes belief), and Constitution (worldview by theme, each belief
+  expandable to its full belief→claim→quote→source provenance chain, with
+  revision history and held-open questions). Answered the ten product
+  questions (home screen = the Constitution; the one AI call = passage →
+  1–3 quote-anchored claims; etc.) and produced a ruthless six-week
+  MoSCoW ranking that REMOVEs Argument, Megathread, Project, Person,
+  Tradition, Practice-as-object, the event system, all background
+  pipelines, named AI roles, vector/graph/dedup, and surfaced
+  `confidence` from MVP scope (deferred, not deleted). Design/spec only —
+  no code, database, Supabase, auth, API routes, or UI components
+  created; linked from `README.md`. This and the adversarial review are
+  advisory: they do not modify the frozen architecture or the on-disk
+  `ONTOLOGY.md`/`types/lifeos.ts`; any actual build-narrowing is a future
+  Product-Owner call.

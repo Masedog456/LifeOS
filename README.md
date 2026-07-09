@@ -42,6 +42,9 @@ npm run lint    # lint check
 - [PILOT_GOSPEL_OF_THOMAS_SAYING_37.md](./PILOT_GOSPEL_OF_THOMAS_SAYING_37.md)
   — a manual pilot walkthrough stress-testing the ontology and cognitive
   architecture against a real use case, with findings and recommendations
+- [UX_SPECIFICATION.md](./UX_SPECIFICATION.md) — the MVP interaction
+  blueprint: three screens (Capture, Belief Inbox, Constitution) and a
+  ruthless six-week feature prioritization (design only — nothing built)
 
 All of the above are provisional drafts pending final Product Owner
 sign-off (see the notice at the top of each file).
