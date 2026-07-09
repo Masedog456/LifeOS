@@ -17,12 +17,17 @@ Versioned — see the cross-cutting notes at the end for what these mean).
 
 **Purpose:** The abstract parent of any originating material the user
 consumes or captures from outside their own head. `Book` and `Article`
-are concrete specializations today; future types (video, podcast,
-conversation transcript) extend the same base without inventing a new
-top-level concept. `Source` is the anchor provenance points back to.
+are concrete specializations today with type-specific fields; the rest of
+the type space — `pdf`, `webpage`, `video`, `podcast`, `conversation`,
+`journal`, `image`, `other` — is represented directly as a `Source` for
+now, without a narrowed subtype. Code and features must not assume every
+`Source` is a `Book` or `Article`; the full `type` union is the contract.
+`Source` is the anchor provenance points back to.
 
-- **Required fields:** `id`, `type` (discriminator), `title`,
-  `capturedAt`, `provenance` (`human` | `import`)
+- **Required fields:** `id`, `type` (discriminator — `book` | `article` |
+  `pdf` | `webpage` | `video` | `podcast` | `conversation` | `journal` |
+  `image` | `other`), `title`, `capturedAt`, `provenance` (`human` |
+  `import`)
 - **Optional fields:** `authorIds` (→ Person), `publishedAt`, `url`,
   `identifier` (ISBN/DOI/etc.), `description`, `tags`
 - **Relationships:** has many `Quote`, `Note`, `Claim` extracted from it;
@@ -255,6 +260,25 @@ mutability concrete and queryable.
 - **Mutability:** **Immutable.** A `Revision` is itself a historical
   record — never edited or deleted once created.
 
+## UserJudgment
+
+**Purpose:** Records the human's verdict — accept, reject, question, or
+revise — on an AI-proposed `Claim`, summary, `Concept` link, or other
+interpretation. This is the concrete enforcement point for `PRINCIPLES.md`
+§2 ("AI assists judgment but does not replace judgment"): AI-proposed
+content is provisional until a `UserJudgment` exists for it (or its own
+status field otherwise reflects user confirmation).
+
+- **Required fields:** `id`, `targetType`, `targetId`, `decision`
+  (`accepted` | `rejected` | `questioned` | `revised`), `judgedAt`
+- **Optional fields:** `note`, `revisionId` (set when `decision` is
+  `revised`, pointing at the `Revision` the judgment produced)
+- **Relationships:** references exactly one target object of any type;
+  may reference a `Revision` when the judgment resulted in one
+- **Mutability:** **Immutable.** Like `Revision`, a `UserJudgment` is a
+  historical record of a decision made at a point in time — it is not
+  edited after the fact; a changed mind produces a new `UserJudgment`.
+
 ## Project
 
 **Purpose:** An organizing container for a body of ongoing work or
@@ -272,8 +296,11 @@ purpose, without itself being part of the knowledge graph's content.
 
 ## Relationship
 
-**Purpose:** A first-class, typed edge connecting any two ontology
-objects — the explicit mechanism behind "knowledge graphs." Cross-object
+**Purpose:** A first-class, typed edge connecting any two first-class
+ontology objects — the explicit mechanism behind "knowledge graphs."
+`fromType`/`toType` are independent, so a `Relationship` can connect any
+object to any other (e.g. `Claim`↔`Person`, `Note`↔`Project`,
+`Concept`↔`Tradition`), not just objects of the same kind. Cross-object
 connections that carry meaning (supports, contradicts, cites, part-of,
 etc.) are modeled as records so the graph is queryable and extensible
 without schema churn.
@@ -297,10 +324,19 @@ without schema churn.
   originate from a `Source` or from AI assistance carries an explicit
   provenance field (see `types/lifeos.ts`). This enforces `PRINCIPLES.md`
   §3 at the schema level, not just as a UI convention.
+- **Two layers of provenance.** An object-specific `provenance` field
+  (`human` | `import` | `ai-proposed`) answers *how* a record came to
+  exist. A separate `ProvenanceMeta` mixin — applied to `Claim`,
+  `Concept`, `Argument`, `ConstitutionEntry`, and `Relationship`, the
+  objects most likely to be AI-touched or synthesized — adds `createdBy`/
+  `updatedBy` (who last acted on it), `aiModel` (which model, when AI),
+  `sourceLocation`, `confidence`, and `evidenceIds` (supporting records).
+  Together with `UserJudgment`, this is the data-layer trail for "AI
+  assists judgment but does not replace judgment."
 - **What Immutable / Versioned / Mutable mean here:**
-  - **Immutable** (`Quote`, `Reflection`, `Revision`) — the historical
-    record must never change. Corrections create new records that
-    reference the old one.
+  - **Immutable** (`Quote`, `Reflection`, `Revision`, `UserJudgment`) —
+    the historical record must never change. Corrections create new
+    records that reference the old one.
   - **Versioned** (`Claim`, `Concept`, `Argument`, `ConstitutionEntry`,
     `Practice` status) — the *current* value can change, but every
     material change produces a `Revision`, so nothing is lost, only

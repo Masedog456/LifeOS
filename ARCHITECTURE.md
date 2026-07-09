@@ -49,17 +49,25 @@ built.
 
 When LIFEOS-003 implements the database, the expected table shape
 (subject to the Product Owner's Plan v2.0 §5 confirmation) is one table
-per concrete ontology object in `ONTOLOGY.md`, plus a shared
-`relationships` table for the `Relationship` object and a shared
-`revisions` table for the `Revision` object:
+per concrete ontology object in `ONTOLOGY.md`, plus shared tables for the
+generic cross-cutting objects (`Relationship`, `Revision`,
+`UserJudgment`):
 
 ```
 sources, books, articles, notes, quotes, claims, concepts, people,
 traditions, arguments, questions, megathreads, constitution_entries,
 practices, reflections, projects
-relationships   -- generic typed edges (fromType/fromId/toType/toId)
-revisions       -- generic append-only version history
+relationships    -- generic typed edges (fromType/fromId/toType/toId)
+revisions        -- generic append-only version history
+user_judgments   -- generic append-only human verdicts on AI-proposed content
 ```
+
+`sources` covers the full `SourceType` union (`book`, `article`, `pdf`,
+`webpage`, `video`, `podcast`, `conversation`, `journal`, `image`,
+`other`) via its `type` column; `books` and `articles` hold only the
+fields specific to those two narrowed subtypes. The other source types
+have no dedicated table yet — they live in `sources` alone until/unless a
+narrowed subtype is warranted.
 
 Notes on this shape, for future implementation:
 

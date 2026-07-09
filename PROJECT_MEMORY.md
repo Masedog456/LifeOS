@@ -34,10 +34,16 @@ pending Product Owner approval).
     Full T2 acceptance criteria (final push, `.env` hygiene verification)
     still open pending T3+.
   - **Foundation architecture pass (out-of-band, Product Owner-directed,
-    before T3):** in progress. Adds `PRINCIPLES.md`, `ONTOLOGY.md`,
-    `ARCHITECTURE.md`, `AI_AGENT_RULES.md`, `types/lifeos.ts`. Docs/spec
-    only — no database calls, no schema created, no secrets touched. See
-    §7 and §8.
+    before T3):** committed as `4f8b78b`. Added `PRINCIPLES.md`,
+    `ONTOLOGY.md`, `ARCHITECTURE.md`, `AI_AGENT_RULES.md`,
+    `types/lifeos.ts`. Docs/spec only — no database calls, no schema
+    created, no secrets touched.
+  - **Domain-model hardening pass (out-of-band, Product Owner-directed,
+    before T3):** in progress. Expands `Source.type` beyond book/article,
+    adds `ProvenanceMeta` (createdBy/updatedBy/aiModel/sourceLocation/
+    confidence/evidenceIds) to AI-touchable objects, and adds
+    `UserJudgment`. `types/lifeos.ts` + `ONTOLOGY.md` + `ARCHITECTURE.md`
+    updated to match. Still docs/spec only. See §7 and §8.
   - **T3–T6:** not started. Explicitly deferred — no Supabase, Anthropic,
     Vercel, or environment secret work has been done.
 - What exists: scaffolded app only. No database tables, no auth, no AI
@@ -161,4 +167,27 @@ scope or order.
   outside this ticket's scope was built"; this pass is scope the Product
   Owner explicitly requested mid-session, layered on top of the ticket
   rather than replacing it. All new docs are marked provisional pending
-  Product Owner approval, consistent with existing docs.
+  Product Owner approval, consistent with existing docs. Committed and
+  pushed as `4f8b78b`.
+- 2026-07-09 — Domain-model hardening pass, explicitly directed by the
+  Product Owner as a second out-of-band insertion before T3. Changed
+  `types/lifeos.ts`: (1) widened `Source.type` from `book`/`article`-only
+  to a 10-member `SourceType` union (`book`, `article`, `pdf`, `webpage`,
+  `video`, `podcast`, `conversation`, `journal`, `image`, `other`) so the
+  system doesn't assume all sources are books/articles, while `Book` and
+  `Article` remain narrowed subtypes; (2) added a `ProvenanceMeta` mixin
+  (`createdBy`, `updatedBy`, `aiModel`, `sourceLocation`, `confidence`,
+  `evidenceIds`) applied to `Claim`, `Concept`, `Argument`,
+  `ConstitutionEntry`, and `Relationship` — the objects most likely to be
+  AI-touched or synthesized — folding in and removing `Claim`'s prior
+  standalone `confidence` field as now redundant; (3) added `Actor`
+  (`"user" | "ai"`) and `UserJudgment` (records accept/reject/question/
+  revise verdicts on AI-proposed content) types, and added
+  `"UserJudgment"` to `OntologyType`; (4) documented that `Relationship`
+  already connects any two `OntologyType` members independently (no code
+  change needed, just a clarifying comment). Updated `ONTOLOGY.md`
+  (Source section, new UserJudgment section, cross-cutting notes) and
+  `ARCHITECTURE.md` (future Supabase table list: added `user_judgments`,
+  clarified `sources`/`books`/`articles` split) to match. Still
+  design/spec and types only — no database calls, no Supabase schema
+  created, no secrets touched.

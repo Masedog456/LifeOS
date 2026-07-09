@@ -17,8 +17,11 @@
 export type ID = string;
 export type ISODateTime = string;
 
-/** Where a piece of data ultimately came from. */
+/** Categorical origin of a piece of data — distinct from who or what acted on it (see ProvenanceMeta below). */
 export type Provenance = "human" | "import" | "ai-proposed";
+
+/** Who most recently acted on a record: the user, or an AI agent acting under the user's direction. */
+export type Actor = "user" | "ai";
 
 export type ClaimStatus = "proposed" | "accepted" | "contested" | "retracted";
 export type ArgumentStatus = "draft" | "active" | "superseded";
@@ -40,7 +43,26 @@ export type RelationType =
   | "authored-by"
   | "member-of";
 
-/** Discriminator used by Relationship and Revision to point at any ontology object. */
+/**
+ * All kinds of originating material LifeOS can ingest. `book` and `article`
+ * have narrowed subtypes (`Book`, `Article`) with type-specific fields; the
+ * rest are represented directly as `Source` today and should NOT be assumed
+ * to not exist just because they lack a narrowed subtype yet — code working
+ * with `Source` must handle the full union, not just books/articles.
+ */
+export type SourceType =
+  | "book"
+  | "article"
+  | "pdf"
+  | "webpage"
+  | "video"
+  | "podcast"
+  | "conversation"
+  | "journal"
+  | "image"
+  | "other";
+
+/** Discriminator used by Relationship, Revision, and UserJudgment to point at any ontology object. */
 export type OntologyType =
   | "Source"
   | "Book"
@@ -59,7 +81,8 @@ export type OntologyType =
   | "Reflection"
   | "Revision"
   | "Project"
-  | "Relationship";
+  | "Relationship"
+  | "UserJudgment";
 
 // ---------- Shared bases ----------
 
@@ -74,10 +97,30 @@ interface Versioned {
   version: number;
 }
 
+/**
+ * Stronger provenance metadata for objects that may be created or touched
+ * by AI and need an evidence trail — layered on top of (not a replacement
+ * for) any object-specific `provenance: Provenance` field, which answers
+ * "how did this come to exist" (human/import/ai-proposed) while this
+ * answers "who last touched it, with what, and what backs it up."
+ */
+interface ProvenanceMeta {
+  createdBy: Actor;
+  updatedBy: Actor;
+  /** Which AI model produced/touched this, when createdBy or updatedBy is "ai" (e.g. "claude-sonnet-5"). */
+  aiModel?: string;
+  /** Where in the originating material this came from (page, timestamp, URL fragment, etc.), when applicable. */
+  sourceLocation?: string;
+  /** 0–1, meaningful mainly for ai-proposed content. */
+  confidence?: number;
+  /** Ids of Quote/Claim/Source (or other) records that support this assertion. */
+  evidenceIds?: ID[];
+}
+
 // ---------- Source & subtypes ----------
 
 export interface Source extends BaseEntity {
-  type: "book" | "article"; // extend as new Source subtypes are added
+  type: SourceType;
   title: string;
   capturedAt: ISODateTime;
   provenance: Extract<Provenance, "human" | "import">;
@@ -131,19 +174,18 @@ export interface Quote extends BaseEntity {
 
 // ---------- Claim (versioned) ----------
 
-export interface Claim extends BaseEntity, Versioned {
+export interface Claim extends BaseEntity, Versioned, ProvenanceMeta {
   statement: string;
   provenance: Provenance;
   status: ClaimStatus;
   sourceId?: ID;
   quoteId?: ID;
-  confidence?: number;
   tags?: string[];
 }
 
 // ---------- Concept (versioned) ----------
 
-export interface Concept extends BaseEntity, Versioned {
+export interface Concept extends BaseEntity, Versioned, ProvenanceMeta {
   name: string;
   description: string;
   aliases?: string[];
@@ -180,7 +222,7 @@ export interface ArgumentPremise {
   statement?: string;
 }
 
-export interface Argument extends BaseEntity, Versioned {
+export interface Argument extends BaseEntity, Versioned, ProvenanceMeta {
   conclusionClaimId: ID;
   premises: ArgumentPremise[];
   status: ArgumentStatus;
@@ -211,7 +253,7 @@ export interface Megathread extends BaseEntity {
 
 // ---------- ConstitutionEntry (versioned, highest-stakes object) ----------
 
-export interface ConstitutionEntry extends BaseEntity, Versioned {
+export interface ConstitutionEntry extends BaseEntity, Versioned, ProvenanceMeta {
   statement: string;
   status: ConstitutionEntryStatus;
   /** Claim / Argument / Reflection ids this entry was synthesized from. */
@@ -262,6 +304,28 @@ export interface Revision {
   authorId?: ID;
 }
 
+// ---------- UserJudgment (human verdict on AI-proposed content) ----------
+
+export type JudgmentDecision = "accepted" | "rejected" | "questioned" | "revised";
+
+/**
+ * Records the human's verdict on an AI-proposed Claim, summary, Concept
+ * link, or other interpretation — the enforcement point for "AI assists
+ * judgment but does not replace judgment" (PRINCIPLES.md §2). AI-proposed
+ * content should be treated as provisional until a UserJudgment exists
+ * for it (or its status field otherwise reflects user confirmation).
+ */
+export interface UserJudgment {
+  id: ID;
+  targetType: OntologyType;
+  targetId: ID;
+  decision: JudgmentDecision;
+  note?: string;
+  /** Set when decision is "revised" — points at the Revision this judgment produced. */
+  revisionId?: ID;
+  judgedAt: ISODateTime;
+}
+
 // ---------- Project ----------
 
 export interface Project extends BaseEntity {
@@ -274,7 +338,13 @@ export interface Project extends BaseEntity {
 
 // ---------- Relationship (typed graph edge) ----------
 
-export interface Relationship extends BaseEntity {
+/**
+ * A typed edge between any two first-class ontology objects. `fromType`
+ * and `toType` are independently drawn from `OntologyType`, so a
+ * Relationship can connect any object to any other — e.g. Claim↔Person,
+ * Note↔Project, Concept↔Tradition — not just objects of the same kind.
+ */
+export interface Relationship extends BaseEntity, ProvenanceMeta {
   fromType: OntologyType;
   fromId: ID;
   toType: OntologyType;
