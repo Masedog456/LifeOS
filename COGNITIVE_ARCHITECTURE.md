@@ -102,6 +102,16 @@ because material always moves through it in one direction.
 - **Success criteria:** Everything captured has at least provisional
   classification; false-positive duplicate `Concept` creation stays rare.
 
+> **Pilot note (Gospel of Thomas, Saying 37):** for small captures — a
+> single quote or saying, not a whole book — Classify produced almost
+> nothing that Extract hadn't already implied; the "new" tags were really
+> just Extract's output restated. Treat Classify as a genuinely separate
+> step primarily for large ingestions (a whole book, a batch import),
+> where classification is real, distinct batch work. For small captures,
+> it's acceptable for Classify to collapse into Extract as one step —
+> this is a statement about stage granularity, not a change to what the
+> stages produce.
+
 ### Understand
 
 - **Purpose:** Move from "this text exists" to "what does this text
@@ -159,6 +169,15 @@ because material always moves through it in one direction.
   approves, edits, or rejects every draft.
 - **Success criteria:** Every active `ConstitutionEntry` traces through
   `derivedFrom` to real evidence; no synthesis skips Compare.
+
+> **Pilot note (Gospel of Thomas, Saying 37):** in simple use cases,
+> Compare and Synthesize blurred together in practice — the moment a
+> contradiction was found (Compare), the impulse to draft competing
+> `Argument`s (Synthesize) was immediate and hard to treat as a separate
+> act of thinking. The stage boundary is still useful conceptually (it's
+> what keeps Compare from prematurely resolving tension), but implementers
+> should expect these two stages to often happen in the same sitting, and
+> should not force artificial separation in the UI when they do.
 
 ### Reflect
 
@@ -715,6 +734,35 @@ Decisions that always require human judgment:
 - **Any expansion of the ontology itself** — this document and
   `ONTOLOGY.md` are under this same constraint; see §5's Virtue note for
   a live example of deferring rather than deciding unilaterally.
+
+### Future design spike: trust-tiering
+
+**Not designed yet — flagged here as required future work, not as a
+current policy.** The Gospel of Thomas pilot made the scaling risk in
+"AI proposes, human disposes" concrete: a *single saying* produced two
+pending `UserJudgment`s, a contested claim pair, and a stuck-in-draft
+constitution entry. At real volume (dozens of books), an undifferentiated
+review queue where every proposal — a routine tag suggestion and a
+`ConstitutionEntry` activation — waits for the same kind of human
+attention risks becoming the reason the user disengages, which would
+itself violate `PRINCIPLES.md` §1 (knowledge nobody returns to).
+
+A future design spike should explore **tiering AI proposals by stakes**,
+for example:
+- Low-risk proposals (a tag suggestion, a `related-to` relationship, a
+  minor metadata correction) might get a lighter-weight confirmation UX
+  — reviewed in batches, or defaulted-accept-with-easy-undo.
+- High-stakes changes — everything listed earlier in this section,
+  without exception — must continue to require the same explicit,
+  individual, unhurried human judgment they require today. Trust-tiering
+  must never become a way to quietly lower the bar for a
+  `ConstitutionEntry` activation or a `contradicts` relationship; it is
+  only about reducing friction on the low-stakes end, never about
+  raising AI's autonomy on the high-stakes end.
+
+This is explicitly deferred — no tiering exists today, and until it is
+designed and approved, every AI proposal of every kind uses the same
+single-item human review flow described above.
 
 ---
 

@@ -119,12 +119,23 @@ interface ProvenanceMeta {
 
 // ---------- Source & subtypes ----------
 
+/**
+ * How confidently authorship is known, independent of whether `authorIds`
+ * is populated — e.g. a `Book` can have `authorAttribution: "traditional"`
+ * with an `authorIds` entry for the traditionally-named author, or
+ * `"anonymous"` with no `authorIds` at all. See ONTOLOGY.md's authorship
+ * representation rule (structural fields vs. Relationship records).
+ */
+export type AuthorAttribution = "confirmed" | "traditional" | "disputed" | "anonymous";
+
 export interface Source extends BaseEntity {
   type: SourceType;
   title: string;
   capturedAt: ISODateTime;
   provenance: Extract<Provenance, "human" | "import">;
   authorIds?: ID[];
+  /** Defined on Source (not just Book) since Article and other source types can be equally anonymous/disputed. */
+  authorAttribution?: AuthorAttribution;
   publishedAt?: ISODateTime;
   url?: string;
   identifier?: string;
@@ -134,7 +145,6 @@ export interface Source extends BaseEntity {
 
 export interface Book extends Source {
   type: "book";
-  authorIds: ID[];
   isbn?: string;
   edition?: string;
   publisher?: string;

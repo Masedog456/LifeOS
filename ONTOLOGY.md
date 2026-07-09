@@ -28,21 +28,48 @@ now, without a narrowed subtype. Code and features must not assume every
   `pdf` | `webpage` | `video` | `podcast` | `conversation` | `journal` |
   `image` | `other`), `title`, `capturedAt`, `provenance` (`human` |
   `import`)
-- **Optional fields:** `authorIds` (→ Person), `publishedAt`, `url`,
-  `identifier` (ISBN/DOI/etc.), `description`, `tags`
+- **Optional fields:** `authorIds` (→ Person), `authorAttribution`
+  (`confirmed` | `traditional` | `disputed` | `anonymous` — see the
+  authorship rule below), `publishedAt`, `url`, `identifier` (ISBN/DOI/
+  etc.), `description`, `tags`
 - **Relationships:** has many `Quote`, `Note`, `Claim` extracted from it;
   references `Person` as author(s); may belong to one or more `Project`
 - **Mutability:** Mutable metadata (title corrections, tags); identity is
   treated as append-only — corrections happen via field edits, not
   delete/replace.
 
+**Authorship representation rule** (added after the Gospel of Thomas
+pilot found the ontology could represent "who wrote this" two
+inconsistent ways):
+
+- Use the structural fields — `Source.authorIds` plus
+  `Source.authorAttribution` — for stable, low-ambiguity attribution,
+  including attribution that is itself explicitly *un*certain (e.g. a
+  `Book` with `authorIds: [thomasId]` and `authorAttribution:
+  "traditional"`, or `authorAttribution: "anonymous"` with no
+  `authorIds` at all). The attribution's *uncertainty* is data, recorded
+  directly on the object — not something a UI has to infer.
+- Use a `Relationship` (e.g. `relationType: "authored-by"`) instead when
+  the authorship claim is itself contested, discovered, or interpretive
+  — something someone is *arguing for*, with its own evidence and
+  possible counter-claims, rather than a settled (even if traditional)
+  fact about the source. A `Relationship` can carry `evidenceIds`,
+  `confidence`, and can be `contradicts`-linked to a competing
+  attribution claim in a way a plain field cannot.
+- `authorIds` is now optional on `Source` (and therefore on `Book`,
+  which no longer overrides it as required) precisely so anonymous and
+  disputed-authorship works don't force a fabricated or overstated
+  attribution just to satisfy the schema.
+
 ## Book
 
 **Purpose:** A bounded, long-form published work. A `Source` subtype.
 
-- **Required fields:** `id`, `title`, `authorIds`
-- **Optional fields:** `isbn`, `edition`, `publisher`, `publishedYear`,
-  `totalPages`
+- **Required fields:** `id`, `title`
+- **Optional fields:** `authorIds`, `authorAttribution` (inherited from
+  `Source` — see the authorship rule above; no longer required, since
+  many books LifeOS needs to hold have contested or anonymous authorship),
+  `isbn`, `edition`, `publisher`, `publishedYear`, `totalPages`
 - **Relationships:** extends `Source`; has many `Quote`/`Note`/`Claim`,
   typically scoped by page or location
 - **Mutability:** Mutable metadata; identity immutable once created.
@@ -162,6 +189,18 @@ Where the system represents *why*, not just *what*.
   `Concept`/`Tradition`/`Person`
 - **Mutability:** **Versioned.** A change to an `Argument`'s structure is
   a meaningful event in the user's reasoning and must be tracked.
+
+**Premise-promotion rule** (added after the Gospel of Thomas pilot found
+`Argument`s could leave inline premises informal indefinitely, with no
+rule forcing consistency): an inline `ArgumentPremise.statement` (a
+premise not yet backed by a real `Claim`) is fine while an `Argument` is
+`draft` — that's normal drafting. But an `Argument` **cannot transition
+to `active`** until every premise load-bearing for its conclusion has
+been promoted to a real `Claim` (via `claimId`), so that every *active*
+argument's premises are uniformly evidence-backed and independently
+reviewable — never a mix of formally-claimed and informally-asserted
+support. Minor, non-load-bearing asides may remain inline at the
+implementer's judgment, but the conclusion-supporting chain must not.
 
 ## Question
 

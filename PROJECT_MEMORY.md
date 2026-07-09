@@ -52,20 +52,25 @@ pending Product Owner approval).
     expansion path. Design document only — no code, database, Supabase,
     auth, API routes, or UI touched.
   - **Architecture pilot (out-of-band, Product Owner-directed, before
-    T3):** in progress. Adds `PILOT_GOSPEL_OF_THOMAS_SAYING_37.md` — a
-    manual, hand-simulated run of the full 12-stage lifecycle against a
-    real interpretive question (Gospel of Thomas, Saying 37), exhibiting
+    T3):** committed as `618b13a`. Added `PILOT_GOSPEL_OF_THOMAS_SAYING_37.md`
+    — a manual, hand-simulated run of the full 12-stage lifecycle against
+    a real interpretive question (Gospel of Thomas, Saying 37), exhibiting
     all 13 core ontology object types and stress-testing them before any
     schema is written. Found real friction (`Book.authorIds` required —
     breaks on anonymous/pseudonymous works; `ArgumentPremise`
-    claimId-vs-inline-statement promotion is undefined; authorship can be
-    represented two inconsistent ways) alongside real validation (Quote/
-    Claim/Relationship/Revision/UserJudgment and the
-    ConstitutionEntry/Practice state-machine gate all held up under a
-    genuinely hard case). Recommendations recorded in the pilot doc
-    itself, not yet applied to `ONTOLOGY.md`/`types/lifeos.ts`/
-    `ARCHITECTURE.md`/`COGNITIVE_ARCHITECTURE.md` — pending a future,
-    explicitly-scoped pass. Design/analysis only. See §7 and §8.
+    claimId-vs-inline-statement promotion undefined; authorship
+    representable two inconsistent ways) alongside real validation.
+  - **Pilot lessons applied (out-of-band, Product Owner-directed, before
+    T3):** in progress. **All Gospel of Thomas pilot findings now
+    applied**: `Book.authorIds` is optional, `authorAttribution` added to
+    `Source` (types + `ONTOLOGY.md` authorship representation rule);
+    `ONTOLOGY.md` now has an `Argument` premise-promotion rule;
+    `COGNITIVE_ARCHITECTURE.md` has pilot notes on Classify/Compare/
+    Synthesize stage granularity plus a trust-tiering future design
+    spike under §8; `ARCHITECTURE.md` marks `confidence` uncalibrated and
+    unsafe for UI/gating/automated belief or Constitution/Practice
+    changes. Still docs/types only — no database, Supabase, auth, API
+    routes, or UI touched. See §7 and §8.
   - **T3–T6:** not started. Explicitly deferred — no Supabase, Anthropic,
     Vercel, or environment secret work has been done.
 - What exists: scaffolded app only. No database tables, no auth, no AI
@@ -265,3 +270,37 @@ scope or order.
   instruction, pending a future explicitly-scoped pass. Also linked the
   new doc from `README.md`. Design/analysis only — no code, database,
   Supabase, auth, API routes, or UI components touched.
+- 2026-07-09 — Applied the Gospel of Thomas pilot's recommendations,
+  explicitly approved by the Product Owner. Changed `types/lifeos.ts`:
+  removed `Book`'s required-`authorIds` override (now inherits
+  `Source.authorIds?: ID[]`) and added `AuthorAttribution` (`"confirmed"
+  | "traditional" | "disputed" | "anonymous"`) plus
+  `Source.authorAttribution?`, so anonymous/pseudonymous/disputed
+  authorship (the normal case for the scripture/classical-text material
+  in `VISION.md`'s scope, not an edge case) can be represented honestly
+  instead of forcing a fabricated or overstated attribution. Placed on
+  `Source` rather than only `Book` so `Article` and future source types
+  inherit it too, per instruction. Updated `ONTOLOGY.md`: added an
+  authorship representation rule (structural fields for stable/known
+  attribution — including explicitly-uncertain attribution recorded as
+  data — vs. `Relationship` records for contested/discovered/
+  interpretive authorship claims) and an `Argument` premise-promotion
+  rule (inline `ArgumentPremise.statement` is fine while `draft`, but
+  every conclusion-supporting premise must be promoted to a real `Claim`
+  before the `Argument` can go `active`). Updated
+  `COGNITIVE_ARCHITECTURE.md`: added pilot notes under the Classify and
+  Synthesize lifecycle stages (Classify may collapse into Extract for
+  small captures; Compare and Synthesize may blur together in simple use
+  cases — both framed as statements about stage granularity, not changes
+  to what the stages produce), and added a "Future design spike:
+  trust-tiering" subsection under §8 — explicitly **not designed yet**,
+  proposing low-stakes proposals could someday get lighter-weight
+  confirmation UX while every high-stakes decision already listed in §8
+  continues to require the same explicit human judgment, with no
+  lowering of that bar. Updated `ARCHITECTURE.md`: marked
+  `ProvenanceMeta.confidence` as uncalibrated in the AI processing
+  pipeline section, with an explicit rule that it must never be used for
+  UI sorting/filtering/gating, review-queue auto-triage, or to drive any
+  automated belief, `ConstitutionEntry`, or `Practice` change. Still
+  docs/types only — no database calls, no Supabase schema created, no
+  secrets touched, no API routes or UI components created.

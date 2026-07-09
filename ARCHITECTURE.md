@@ -144,6 +144,26 @@ and to only ever:
 - Never write directly to `Quote.text`, `Reflection.body`, or any other
   field this document or `ONTOLOGY.md` marks immutable
 
+**`confidence` is uncalibrated — do not build against it as if it means
+anything yet.** `ProvenanceMeta.confidence` exists in `types/lifeos.ts`
+today as a bare `0–1` number with no defined scoring method. The Gospel
+of Thomas pilot assigned confidence values "by feel" when illustrating
+example records, which is exactly the failure mode to avoid in real
+code: a number that *looks* meaningful without *being* meaningful is more
+dangerous than no number at all, because it invites downstream logic to
+trust it. Concretely, until a calibration approach is designed and
+documented:
+
+- Do not sort, filter, or gate any UI list by `confidence`.
+- Do not use `confidence` to auto-triage the human review queue (see
+  `COGNITIVE_ARCHITECTURE.md` §8's trust-tiering design spike — that
+  spike, when it happens, is the place calibration would need to be
+  solved first, not `confidence` as it exists today).
+- **`confidence` must never drive an automated belief change, a
+  `ConstitutionEntry` status transition, or a `Practice` change of any
+  kind** — those remain human-only decisions regardless of what any
+  confidence number says (`COGNITIVE_ARCHITECTURE.md` §8).
+
 ## Export/backup strategy (future)
 
 Not implemented. Required property, per `PRINCIPLES.md` §5: the user must
