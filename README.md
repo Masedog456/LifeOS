@@ -32,6 +32,9 @@ npm run lint    # lint check
   design and engineering decisions
 - [ONTOLOGY.md](./ONTOLOGY.md) — the first-class objects LifeOS is built
   around
+- [COGNITIVE_ARCHITECTURE.md](./COGNITIVE_ARCHITECTURE.md) — how knowledge
+  moves through the system: the lifecycle, AI roles, events, and human
+  oversight boundaries (design only — nothing here is implemented yet)
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — proposed technical architecture
   (design/spec only — nothing here is implemented yet)
 - [AI_AGENT_RULES.md](./AI_AGENT_RULES.md) — rules AI agents must follow

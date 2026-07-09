@@ -39,11 +39,18 @@ pending Product Owner approval).
     `types/lifeos.ts`. Docs/spec only — no database calls, no schema
     created, no secrets touched.
   - **Domain-model hardening pass (out-of-band, Product Owner-directed,
-    before T3):** in progress. Expands `Source.type` beyond book/article,
-    adds `ProvenanceMeta` (createdBy/updatedBy/aiModel/sourceLocation/
-    confidence/evidenceIds) to AI-touchable objects, and adds
-    `UserJudgment`. `types/lifeos.ts` + `ONTOLOGY.md` + `ARCHITECTURE.md`
-    updated to match. Still docs/spec only. See §7 and §8.
+    before T3):** committed as `aac56e1`. Expanded `Source.type` beyond
+    book/article, added `ProvenanceMeta` (createdBy/updatedBy/aiModel/
+    sourceLocation/confidence/evidenceIds) to AI-touchable objects, and
+    added `UserJudgment`. `types/lifeos.ts` + `ONTOLOGY.md` +
+    `ARCHITECTURE.md` updated to match. Still docs/spec only.
+  - **Cognitive architecture pass (out-of-band, Product Owner-directed,
+    before T3):** in progress. Adds `COGNITIVE_ARCHITECTURE.md` — the
+    knowledge lifecycle, AI role architecture, event architecture,
+    canonical identity system, object state machines, background
+    pipelines, human oversight boundaries, failure modes, and future
+    expansion path. Design document only — no code, database, Supabase,
+    auth, API routes, or UI touched. See §7 and §8.
   - **T3–T6:** not started. Explicitly deferred — no Supabase, Anthropic,
     Vercel, or environment secret work has been done.
 - What exists: scaffolded app only. No database tables, no auth, no AI
@@ -190,4 +197,24 @@ scope or order.
   `ARCHITECTURE.md` (future Supabase table list: added `user_judgments`,
   clarified `sources`/`books`/`articles` split) to match. Still
   design/spec and types only — no database calls, no Supabase schema
-  created, no secrets touched.
+  created, no secrets touched. Committed and pushed as `aac56e1`.
+- 2026-07-09 — Cognitive architecture pass, explicitly directed by the
+  Product Owner as a third out-of-band insertion before T3. Added
+  `COGNITIVE_ARCHITECTURE.md`: the process/verb layer sitting alongside
+  `ONTOLOGY.md` (nouns) and `ARCHITECTURE.md` (tech shape) — Mission,
+  12-stage Knowledge Lifecycle (Capture through Review, explicitly
+  cyclical via Review feeding back into Capture/Compare/Revise), 10-role
+  AI Role Architecture (explicitly scoped as functional/prompt-level
+  personas within the one frozen AI route, not separate services),
+  12-event append-only Event Architecture, Canonical Identity System
+  (including a flagged open question: "Virtue" isn't a first-class
+  ontology object yet, treated as a tagged `Concept` for now rather than
+  unilaterally expanding the ontology), 7 object state machines, 9
+  background pipelines, an explicit Human Oversight list ("AI proposes,
+  human disposes"), 7 failure modes with safeguards, and a Future
+  Expansion section arguing the ontology's center can stay fixed while
+  expansion happens at the edges. Also linked the new doc from
+  `README.md`. Design document only — no code, database, Supabase, auth,
+  API routes, or UI components touched. A self-critique of this document
+  was delivered directly to the Product Owner rather than embedded in the
+  file, to keep the file's structure exactly as specified.
