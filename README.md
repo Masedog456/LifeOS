@@ -47,6 +47,8 @@ npm run lint    # lint check
   ruthless six-week feature prioritization (design only — nothing built)
 - [QA_CHECKLIST.md](./QA_CHECKLIST.md) — manual QA steps for the
   implemented Belief Thread MVP local trial
+- [TRIAL_GUIDE.md](./TRIAL_GUIDE.md) — how to use the local prototype for
+  the two-week personal trial, and how to judge whether it's valuable
 
 All of the above are provisional drafts pending final Product Owner
 sign-off (see the notice at the top of each file).
