@@ -1,8 +1,10 @@
 # LifeOS
 
-LifeOS is a personal intelligence OS — a single-user application for capturing,
-organizing, and eventually reasoning over personal data, built on Next.js,
-Supabase, and the Anthropic API.
+LifeOS is an AI-native operating system for lifelong intellectual, personal,
+and spiritual formation — a single-user application that turns books,
+notes, conversations, and reflections into organized knowledge and
+practical life formation, built on Next.js, Supabase, and the Anthropic
+API.
 
 ## Local development
 
@@ -24,4 +26,6 @@ npm run lint    # lint check
 ## Project memory
 
 See [PROJECT_MEMORY.md](./PROJECT_MEMORY.md) for current project state, what's
-next, and the decisions log.
+next, and the change log. See [VISION.md](./VISION.md) for product
+direction. Both are provisional drafts pending final Product Owner
+sign-off (see the notice at the top of each file).

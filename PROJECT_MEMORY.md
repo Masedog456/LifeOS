@@ -1,50 +1,56 @@
-> **PROVISIONAL — NOT FINAL.** The canonical 8-section structure for this
-> document is defined in Project Plan v1.0 §10, which has not yet been
-> supplied to Claude Code. The structure below is a reasonable proposal
-> only. Do not treat section names, order, or content as authoritative
-> until the Product Owner confirms them against Plan v1.0 §10.
+> **PROVISIONAL — NOT FINAL.** The canonical structure for this document is
+> defined in Project Plan v1.0 §10, which has not yet been supplied to
+> Claude Code. The 8-section structure below is a Product Owner-directed
+> proposal (updated 2026-07-09). Do not treat section names, order, or
+> content as authoritative until confirmed against Plan v1.0 §10. Likewise,
+> the directory structure in §4 is provisional pending Project Plan v2.0
+> §5.
 
 # PROJECT_MEMORY.md
 
-## 1. Project Overview
+## 1. Product North Star
 
-LifeOS is a personal intelligence OS (single user). See `VISION.md`
-(currently a placeholder — pending the approved document).
+LifeOS is an AI-native operating system for lifelong intellectual,
+personal, and spiritual formation. It turns books, articles, notes,
+conversations, reflections, and lived experience into organized
+knowledge, an evolving worldview synthesis, and practical life formation —
+via scanning/capture, compiling, categorizing, organizing, note-taking,
+quote saving, megathreads, knowledge graphs, and a Constitution Engine
+that turns knowledge into an integrated way of life.
 
-## 2. Current State
+Single user. See `VISION.md` for the full statement (also provisional,
+pending Product Owner approval).
+
+## 2. Current Sprint Status
 
 - Date: 2026-07-09
-- LIFEOS-001 (Sprint 1, Day 1) is **in progress**. Only **T1 — Scaffold the
-  application** has been completed so far.
-- What exists: a Next.js (App Router, TypeScript, Tailwind, ESLint) app
-  scaffolded with `npm run dev` / `npm run build` verified locally.
-- What does NOT exist yet: Supabase wiring, `lib/supabase.ts`, the health
-  check homepage, `.env.local`, Vercel deployment, any production URL.
-- No database tables, no auth, no AI calls — none are in scope yet.
-- Production URL: none yet — to be recorded here once T5 is complete.
+- Sprint 1, Day 1 — **LIFEOS-001** is in progress.
+  - **T1 — Scaffold the application: done.** Next.js (App Router,
+    TypeScript, Tailwind, ESLint) app scaffolded; `npm run dev` / `build`
+    / `lint` verified locally. Committed as `fe95773`.
+  - **T2 — Repository hygiene & project memory: in progress.** This pass
+    stabilizes `VISION.md` and `PROJECT_MEMORY.md` content and structure.
+    Not yet committed (pending explicit go-ahead). Full T2 acceptance
+    criteria (final push, `.env` hygiene verification) still open.
+  - **T3–T6:** not started. Explicitly deferred — no Supabase, Anthropic,
+    Vercel, or environment secret work has been done.
+- What exists: scaffolded app only. No database tables, no auth, no AI
+  calls, no deployment, no production URL.
 
-## 3. Next Up
+## 3. Architecture Decisions
 
-- Immediate: finish remaining LIFEOS-001 tasks (T2–T6) — repository
-  hygiene/commit, environment configuration, health check page, Vercel
-  deploy, session close-out. Blocked on: VISION.md (approved content),
-  Project Plan v1.0 §10 (PROJECT_MEMORY.md structure), Project Plan v2.0 §5
-  (full directory structure), Supabase URL/anon key, Anthropic API key,
-  and a decision on Vercel deploy access.
-- After LIFEOS-001 is fully done: **LIFEOS-002: Auth + RLS**
+- Stack (frozen per Project Plan v2.0): Next.js (App Router, TypeScript)
+  + Tailwind + Supabase + Vercel + Anthropic API.
+- Single user; simple UI; AI will live in exactly one route (not built
+  yet).
+- No schema or stack deviations permitted without Product Owner approval
+  + a Change Log entry (§8) logged **before** implementation.
+- TypeScript strict mode is on (`tsconfig.json`).
 
-## 4. Architecture & Stack (Frozen)
+## 4. File/Folder Structure
 
-- Next.js (App Router, TypeScript) + Tailwind + Supabase + Vercel +
-  Anthropic API
-- Single user; simple UI; AI will live in exactly one route (not built yet)
-- Architecture status: FROZEN per Project Plan v2.0 — no schema or stack
-  deviations permitted without Product Owner approval + a Decisions Log
-  entry logged BEFORE implementation.
-
-## 5. Directory Structure
-
-Only the structure explicitly known today is implemented:
+Only the structure explicitly known today is implemented; this is
+provisional pending Project Plan v2.0 §5:
 
 ```
 app/            # App Router routes
@@ -55,28 +61,69 @@ docs/           # project documentation (empty placeholder for now)
 types/          # shared TypeScript types (empty placeholder for now)
 ```
 
-**Note:** Project Plan v2.0 §5 (the full, final directory structure) has not
-been supplied. `docs/` and `types/` were added at the Product Owner's
-request beyond the ticket's explicit list and are not yet confirmed against
-Plan v2.0 §5. Treat this whole section as provisional until Plan v2.0 §5 is
-confirmed.
+`docs/` and `types/` were added at the Product Owner's request beyond the
+ticket's original explicit list and are not yet confirmed against Plan
+v2.0 §5.
 
-## 6. Environment & Secrets
+## 5. Feature Roadmap
 
-- `.env.example` documents the required variables:
-  `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-  `ANTHROPIC_API_KEY`.
-- No `.env.local` exists yet — secrets have not been provided.
-- No secret values have ever been committed to this repository.
+Immediate (this ticket, LIFEOS-001):
+- Finish T2 (this pass) → T3 (env config) → T4 (health check page) → T5
+  (Vercel deploy) → T6 (close-out). Each remains blocked on inputs listed
+  in §7.
 
-## 7. Decisions Log (append-only)
+Next ticket:
+- **LIFEOS-002: Auth + RLS**
+
+Longer-term (from `VISION.md`, not sequenced or committed yet — capability
+list only, sourced from the vision direction given 2026-07-09):
+- Scanning / capture
+- Compiling & categorizing
+- Organizing & note-taking
+- Quote saving
+- Megathreads
+- Knowledge graphs
+- Constitution Engine
+
+None of the longer-term items are scheduled. They are recorded here so
+future sprint planning has a reference point, not as a commitment to
+scope or order.
+
+## 6. AI/Agent Instructions
+
+- Architecture is FROZEN per Project Plan v2.0 — do not introduce new
+  stack components, schema, or structural deviations without explicit
+  Product Owner approval logged in §8 *before* implementation.
+- Never invent or fabricate secrets, credentials, or "approved" document
+  content (e.g. VISION.md, Plan v1.0/v2.0 text). Where real content is
+  missing, use clearly marked placeholders/provisional drafts and stop to
+  ask, per the governing ticket's instructions.
+- Do not build outside the scope of the current ticket/task instruction,
+  even if adjacent work seems natural to do while in the file.
+- Keep this document's §2 and §7 current at the end of every work session.
+- §8 (Change Log) is append-only — never edit or delete prior entries.
+
+## 7. Open Questions / Blockers
+
+- `VISION.md` is a strong provisional draft, not the Product Owner's
+  final approved document — needs sign-off.
+- This document's own structure needs sign-off against Plan v1.0 §10.
+- Directory structure (§4) needs sign-off against Plan v2.0 §5 — `docs/`
+  and `types/` are unconfirmed additions.
+- Supabase Project URL + anon key: not yet provided.
+- Anthropic API key: not yet provided.
+- Vercel deploy approach (dashboard vs. CLI token): not yet decided.
+- These block T3 (env config), T4 (health check page needs Supabase
+  client), and T5 (Vercel deploy) respectively.
+
+## 8. Change Log (append-only)
 
 - 2026-07-09 — `npm`'s package-name rules reject capital letters, and the
   repo directory is `LifeOS`. Scaffolded `create-next-app` into a temp
   directory using the lowercase name `lifeos`, then moved the generated
-  files into the repo root (excluding `node_modules`, which was
-  reinstalled in place). `package.json`'s `"name"` field is `"lifeos"`.
-  No effect on app behavior or the frozen stack.
+  files into the repo root (excluding `node_modules`, reinstalled in
+  place). `package.json`'s `"name"` field is `"lifeos"`. No effect on app
+  behavior or the frozen stack.
 - 2026-07-09 — `create-next-app`'s default `.gitignore` used a blanket
   `.env*` pattern, which would have also ignored `.env.example` (required
   to be committed). Replaced it with explicit `.env`, `.env.local`,
@@ -86,16 +133,14 @@ confirmed.
   ticket; not part of the requested file list.
 - 2026-07-09 — Proceeded with T1 (scaffolding) only, per explicit Product
   Owner instruction, while VISION.md, Plan v1.0 §10, Plan v2.0 §5,
-  Supabase credentials, Anthropic key, and Vercel deploy approach remain
-  outstanding. T2–T6 are intentionally not started.
-
-## 8. Open Questions / Risks
-
-- VISION.md placeholder must be replaced with the approved document
-  verbatim before T2 can be considered complete.
-- PROJECT_MEMORY.md's own structure (this document) needs Product Owner
-  sign-off against Plan v1.0 §10.
-- Final directory structure needs sign-off against Plan v2.0 §5 — `docs/`
-  and `types/` are unconfirmed additions.
-- Vercel deploy approach (dashboard vs. CLI token) needs a decision before
-  T5.
+  Supabase credentials, Anthropic key, and Vercel deploy approach remained
+  outstanding. T1 committed as `fe95773` and pushed to
+  `claude/lifeos-implementation-xwrikz`.
+- 2026-07-09 — T2 documentation stabilization pass: replaced placeholder
+  `VISION.md` with a strong provisional vision draft (per Product Owner
+  direction) and restructured `PROJECT_MEMORY.md` to an 8-section format
+  (Product North Star / Current Sprint Status / Architecture Decisions /
+  File-Folder Structure / Feature Roadmap / AI-Agent Instructions / Open
+  Questions-Blockers / Change Log), also per explicit Product Owner
+  direction. Both remain provisional pending final Plan v1.0 §10 and Plan
+  v2.0 §5. Not committed as part of this pass — awaiting go-ahead.
