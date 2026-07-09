@@ -11,6 +11,7 @@ import { useSyncExternalStore } from "react";
 import type {
   Belief,
   Capture,
+  JudgmentEntry,
   Proposal,
   RevisionEntry,
   StoreState,
@@ -56,6 +57,12 @@ function id(): string {
   return `id_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
+function asArray<T>(value: unknown): T[] {
+  // Guard against malformed localStorage where a field isn't an array
+  // (e.g. hand-edited data) — a non-array would crash later map/filter.
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 /** Hydrate once from localStorage (called from a client effect). */
 export function hydrate() {
   if (hydrated || typeof window === "undefined") return;
@@ -65,15 +72,26 @@ export function hydrate() {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<StoreState>;
       state = {
-        captures: parsed.captures ?? [],
-        proposals: parsed.proposals ?? [],
-        beliefs: parsed.beliefs ?? [],
+        captures: asArray<Capture>(parsed.captures),
+        proposals: asArray<Proposal>(parsed.proposals),
+        beliefs: asArray<Belief>(parsed.beliefs).map((b) => ({
+          // Defensively ensure the append-only arrays exist, so the
+          // Constitution/ThreadLine never read undefined.
+          ...b,
+          revisions: asArray<RevisionEntry>(b?.revisions),
+          judgments: asArray<JudgmentEntry>(b?.judgments),
+        })),
       };
       emit();
     }
   } catch {
     // Corrupt storage → start clean rather than crash.
   }
+}
+
+/** Wipe all local prototype data. For the local trial only. */
+export function resetStore() {
+  setState({ captures: [], proposals: [], beliefs: [] });
 }
 
 // ---------- Subscription plumbing ----------

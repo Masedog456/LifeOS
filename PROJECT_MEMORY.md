@@ -382,3 +382,21 @@ scope or order.
   The `ANTHROPIC_API_KEY` path is written but UNTESTED (no key
   configured) — the mock fallback path is what was exercised. This is the
   first commit that adds runtime product code rather than docs/types.
+- 2026-07-09 — QA + hardening pass on the LIFEOS-002 MVP (no new
+  features, no UX redesign, no Supabase/auth/deploy). Bugs fixed: (1)
+  `hydrate()` used `parsed.x ?? []`, which kept a non-array value from
+  malformed/hand-edited localStorage and would crash later `map`/`filter`
+  — now coerced via `Array.isArray`, and each belief's `revisions`/
+  `judgments` are guaranteed to exist; (2) Home's double-submit guard
+  relied on React state (`busy`), so a fast double-click could create a
+  duplicate capture — added a synchronous `useRef` guard. Safeguards:
+  `ThreadLine` guards `!revisions?.length`; added a `resetStore()` action
+  and a confirm-gated "Reset local prototype data" footer on the
+  Constitution page (plus a documented `localStorage.removeItem` manual
+  path). Added `QA_CHECKLIST.md` (all requested flows + edge cases +
+  reset + mock-fallback) and linked it from `README.md`. No automated
+  test framework added — deliberately, per instruction, since the store
+  depends on localStorage + `useSyncExternalStore`; QA is manual.
+  Re-verified with `lint`, `build`, and a browser drive of the full loop
+  plus the reset control and malformed-storage recovery. Product scope
+  unchanged.

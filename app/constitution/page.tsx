@@ -7,6 +7,7 @@ import {
   affirmBelief,
   captureById,
   questionBelief,
+  resetStore,
   reviseBelief,
   useStore,
 } from "@/lib/mvpStore";
@@ -244,6 +245,55 @@ export default function ConstitutionPage() {
           )}
         </section>
       )}
+
+      <ResetLocalData />
     </main>
+  );
+}
+
+/** Prototype maintenance affordance: wipe all local (this-browser) data. */
+function ResetLocalData() {
+  const [confirming, setConfirming] = useState(false);
+
+  if (!confirming) {
+    return (
+      <footer className="mt-16 border-t border-black/[.05] pt-6 dark:border-white/[.06]">
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+        >
+          Reset local prototype data
+        </button>
+      </footer>
+    );
+  }
+
+  return (
+    <footer className="mt-16 border-t border-black/[.05] pt-6 dark:border-white/[.06]">
+      <p className="text-xs text-zinc-500">
+        Delete all captures, proposals, and beliefs stored in this browser?
+        This cannot be undone.
+      </p>
+      <div className="mt-2 flex gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            resetStore();
+            setConfirming(false);
+          }}
+          className="text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400"
+        >
+          Yes, delete everything
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirming(false)}
+          className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+        >
+          Cancel
+        </button>
+      </div>
+    </footer>
   );
 }

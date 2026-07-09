@@ -45,6 +45,8 @@ npm run lint    # lint check
 - [UX_SPECIFICATION.md](./UX_SPECIFICATION.md) — the MVP interaction
   blueprint: three screens (Capture, Belief Inbox, Constitution) and a
   ruthless six-week feature prioritization (design only — nothing built)
+- [QA_CHECKLIST.md](./QA_CHECKLIST.md) — manual QA steps for the
+  implemented Belief Thread MVP local trial
 
 All of the above are provisional drafts pending final Product Owner
 sign-off (see the notice at the top of each file).

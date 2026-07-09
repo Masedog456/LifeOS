@@ -8,7 +8,7 @@ import type { RevisionEntry } from "@/types/mvp";
  * time: a row of nodes connected by a line, oldest → newest.
  */
 export default function ThreadLine({ revisions }: { revisions: RevisionEntry[] }) {
-  if (revisions.length === 0) return null;
+  if (!revisions?.length) return null;
 
   const labelFor: Record<RevisionEntry["reason"], string> = {
     proposed: "Proposed",

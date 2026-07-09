@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   addCapture,
   attachProposals,
@@ -18,6 +18,9 @@ export default function Home() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Synchronous guard against a double-click double-submitting before the
+  // `busy` state has a chance to re-render and disable the buttons.
+  const submitting = useRef(false);
 
   async function generate(captureId: string, raw: string) {
     // Try the single AI route; fall back to a local deterministic mock so
@@ -45,7 +48,8 @@ export default function Home() {
 
   async function handle(analyze: boolean) {
     const raw = text.trim();
-    if (!raw || busy) return;
+    if (!raw || busy || submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setNote(null);
 
@@ -55,6 +59,7 @@ export default function Home() {
 
     setText("");
     setBusy(false);
+    submitting.current = false;
 
     if (analyze) {
       router.push("/inbox");
