@@ -24,7 +24,21 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-09
-- Sprint 1, Day 1 — **LIFEOS-001** is in progress.
+- **LIFEOS-002 — Belief Thread MVP: implemented (this pass).** First
+  working product. Three client screens over a localStorage store (no
+  DB): Home/Capture (`app/page.tsx`), Belief Inbox (`app/inbox/page.tsx`,
+  one proposal at a time, Rewrite primary), Constitution
+  (`app/constitution/page.tsx`, beliefs by theme, expandable, CSS-only
+  thread line, re-judgeable over time). One AI call (`app/api/propose`)
+  with deterministic mock fallback when `ANTHROPIC_API_KEY` is absent.
+  MVP adapter types in `types/mvp.ts` (ontology in `types/lifeos.ts`
+  untouched). Verified end-to-end in a real browser (capture → analyze →
+  rewrite → accept → inbox clear → Constitution thread bends). `lint` and
+  `build` green. Note: this is a client-only prototype; localStorage is
+  per-browser and not yet backed by Supabase (LIFEOS-001 T3–T6 still
+  open).
+- Sprint 1, Day 1 — **LIFEOS-001** is in progress (its deploy/env tasks
+  T3–T6 remain deferred; the MVP above runs locally without them).
   - **T1 — Scaffold the application: done.** Next.js (App Router,
     TypeScript, Tailwind, ESLint) app scaffolded; `npm run dev` / `build`
     / `lint` verified locally. Committed as `fe95773`.
@@ -346,3 +360,25 @@ scope or order.
   advisory: they do not modify the frozen architecture or the on-disk
   `ONTOLOGY.md`/`types/lifeos.ts`; any actual build-narrowing is a future
   Product-Owner call.
+- 2026-07-09 — Implemented **LIFEOS-002 Belief Thread MVP**, the first
+  working product, per the narrow scope. New files: `types/mvp.ts` (MVP
+  adapter types mapped to the ontology; `types/lifeos.ts` untouched),
+  `lib/proposals.ts` (deterministic mock proposal generator),
+  `lib/mvpStore.ts` (localStorage-backed reactive store via
+  `useSyncExternalStore`), `app/api/propose/route.ts` (the single AI call
+  — one Anthropic `fetch` when `ANTHROPIC_API_KEY` is set, deterministic
+  mock otherwise or on any failure), `components/{Nav,StoreHydrator,
+  ThreadLine}.tsx`, `app/inbox/page.tsx`, `app/constitution/page.tsx`.
+  Rewrote `app/page.tsx` (Home/Capture, replacing the scaffold default),
+  updated `app/layout.tsx` (metadata + Nav + hydrator) and `globals.css`
+  (sans font). Removed `app/api/.gitkeep` (real route now present). Data
+  is localStorage only — no Supabase, no auth, no DB, per the "don't
+  block on database setup" instruction. AI: one call only, no background
+  agents/roles/embeddings/vector/graph search; no automatic Constitution
+  changes without a user judgment. Verified with `npm run lint` (0),
+  `npm run build` (0), and an end-to-end browser drive of the full
+  capture→inbox→rewrite→accept→constitution loop, including the thread
+  line rendering Proposed→Rewritten and a belief being questioned later.
+  The `ANTHROPIC_API_KEY` path is written but UNTESTED (no key
+  configured) — the mock fallback path is what was exercised. This is the
+  first commit that adds runtime product code rather than docs/types.
