@@ -23,8 +23,26 @@ pending Product Owner approval).
 
 ## 2. Current Sprint Status
 
+- Date: 2026-07-10
+- **LIFEOS-003 — Knowledge Engine MVP: implemented (this pass).** Added a
+  Knowledge Library subsystem alongside (not replacing) the Belief Ledger.
+  New screens: Library (`app/library/page.tsx` — browse/search/filter,
+  add source) and Reader (`app/library/[id]/page.tsx` — read, highlight→
+  save quote, ask one AI question, send selection/candidates to the Belief
+  Inbox). New processing pipeline (`lib/pipeline.ts`): capture → extract →
+  chunk → summary → quotes → concepts → candidate beliefs, each stage
+  through the ONE AI route. Consolidated `/api/propose` → `/api/ai`
+  (task-dispatched: summary/quotes/concepts/beliefs/question); the old
+  route is deleted and Home now goes through `lib/aiClient`. Storage seam
+  extracted to `lib/persistence.ts` (the Supabase swap point). Candidate
+  beliefs never auto-enter the Constitution — they go through the existing
+  Belief Inbox. Manual-text ingestion is fully automated; PDF/URL create
+  typed, provenance-tracked sources that await their text in the reader
+  (auto-extraction is a later ingestion adapter). Verified end-to-end in a
+  browser (9/9 checks) incl. the LIFEOS-002 flow still working; `lint` and
+  `build` green. Still localStorage-only (no Supabase/auth/deploy).
 - Date: 2026-07-09
-- **LIFEOS-002 — Belief Thread MVP: implemented (this pass).** First
+- **LIFEOS-002 — Belief Thread MVP: implemented.** First
   working product. Three client screens over a localStorage store (no
   DB): Home/Capture (`app/page.tsx`), Belief Inbox (`app/inbox/page.tsx`,
   one proposal at a time, Rewrite primary), Constitution
@@ -400,3 +418,30 @@ scope or order.
   Re-verified with `lint`, `build`, and a browser drive of the full loop
   plus the reset control and malformed-storage recovery. Product scope
   unchanged.
+- 2026-07-10 — Implemented **LIFEOS-003 Knowledge Engine MVP**. Added the
+  Knowledge Library as a subsystem beside the Belief Ledger (LIFEOS-002
+  untouched in behavior). New files: `lib/persistence.ts` (the single
+  storage seam — localStorage today, the one place to change for
+  Supabase), `lib/mockAI.ts` (deterministic summary/quotes/concepts/
+  answer mocks), `lib/aiClient.ts` (client wrapper for the one AI route,
+  with local mock fallback), `lib/pipeline.ts` (chunking + the
+  capture→…→candidate-beliefs pipeline), `lib/labels.ts`,
+  `app/api/ai/route.ts` (the single task-dispatched AI route),
+  `components/AddSource.tsx`, `app/library/page.tsx`,
+  `app/library/[id]/page.tsx`. Extended `types/mvp.ts` (KnowledgeSource,
+  chunk, processing/status enums; `Capture.sourceId`) reusing the
+  ontology's `SourceType`. Extended `lib/mvpStore.ts` with `sources` +
+  library actions/selectors, routed persist/hydrate through the seam, and
+  normalized source arrays on hydrate. Deleted `app/api/propose/route.ts`;
+  updated `app/page.tsx` and `components/Nav.tsx`; updated
+  `QA_CHECKLIST.md` endpoint references. Candidate beliefs flow only
+  through the existing Belief Inbox (never auto into the Constitution).
+  Fixed a *test-harness* false failure (a `text=Read` selector matching
+  the "Ready" processing label + clicking a Link before hydration) — the
+  source→belief backlink itself was correct; direct-load inspection showed
+  the provenance link resolving. Verified 9/9 in a browser (pipeline,
+  send-to-inbox, judge, Constitution, source backlink, ask, save quote,
+  search, and the LIFEOS-002 flow) with zero runtime errors; `lint` and
+  `build` green. Still localStorage-only — no Supabase, auth, or deploy.
+  Known deferral: automatic PDF/URL text extraction (a later ingestion
+  adapter); today those inputs prompt for the text in the reader.

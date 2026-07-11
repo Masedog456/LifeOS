@@ -8,7 +8,7 @@ import {
   resurfacedBelief,
   useStore,
 } from "@/lib/mvpStore";
-import { mockProposals } from "@/lib/proposals";
+import { generateBeliefs } from "@/lib/aiClient";
 
 export default function Home() {
   const router = useRouter();
@@ -23,27 +23,11 @@ export default function Home() {
   const submitting = useRef(false);
 
   async function generate(captureId: string, raw: string) {
-    // Try the single AI route; fall back to a local deterministic mock so
-    // capture never depends on the network.
-    try {
-      const res = await fetch("/api/propose", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: raw }),
-      });
-      if (!res.ok) throw new Error("propose failed");
-      const data = (await res.json()) as {
-        proposals: Parameters<typeof attachProposals>[1];
-        source: "ai" | "mock";
-      };
-      const drafts = data.proposals?.length ? data.proposals : mockProposals(raw);
-      attachProposals(captureId, drafts, data.proposals?.length ? data.source : "mock");
-      return drafts.length;
-    } catch {
-      const drafts = mockProposals(raw);
-      attachProposals(captureId, drafts, "mock");
-      return drafts.length;
-    }
+    // The single AI route, via the shared client (which itself falls back
+    // to a deterministic mock if the network fails).
+    const { result, source } = await generateBeliefs(raw);
+    attachProposals(captureId, result, source);
+    return result.length;
   }
 
   async function handle(analyze: boolean) {

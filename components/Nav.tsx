@@ -6,6 +6,7 @@ import { pendingProposals, useStore } from "@/lib/mvpStore";
 
 const LINKS = [
   { href: "/", label: "Capture" },
+  { href: "/library", label: "Library" },
   { href: "/inbox", label: "Inbox" },
   { href: "/constitution", label: "Constitution" },
 ];

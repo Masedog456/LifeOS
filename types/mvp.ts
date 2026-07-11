@@ -12,6 +12,8 @@
  * simplification, not a change to the ontology.
  */
 
+import type { SourceType } from "@/types/lifeos";
+
 export type ISO = string;
 
 /** Maps to ontology `Source`/`Quote`: the raw, immutable thing the user captured. */
@@ -20,6 +22,8 @@ export interface Capture {
   /** Verbatim captured text. Immutable once created — never edited in place. */
   text: string;
   createdAt: ISO;
+  /** Optional link back to a Knowledge Library source this capture came from. */
+  sourceId?: string;
 }
 
 /** Maps to ontology `Claim` (status `proposed`): an AI/mock-proposed first-person belief. */
@@ -71,8 +75,70 @@ export interface Belief {
   judgments: JudgmentEntry[];
 }
 
+// ---------- Knowledge Library (LIFEOS-003) ----------
+
+/** Reuse the ontology's SourceType (types/lifeos.ts) — no parallel enum. */
+export type { SourceType } from "@/types/lifeos";
+
+/** How the source was brought in. Drives which ingestion adapter ran. */
+export type SourceInput = "text" | "pdf" | "url";
+
+/** Pipeline progress for a source (see lib/pipeline.ts). */
+export type ProcessingState =
+  | "captured"
+  | "extracting_text"
+  | "chunking"
+  | "summarizing"
+  | "extracting_quotes"
+  | "extracting_concepts"
+  | "generating_beliefs"
+  | "ready"
+  | "needs_text"
+  | "error";
+
+/** User-facing reading status, distinct from pipeline processing state. */
+export type SourceStatus = "unread" | "reading" | "read";
+
+/** A chunk of a source's text — the unit future embedding/retrieval will use. */
+export interface KnowledgeChunk {
+  id: string;
+  index: number;
+  text: string;
+}
+
+/**
+ * Maps to ontology `Source` (+ derived `Quote`/`Concept`/`Claim`). The
+ * repository entry from which beliefs are eventually formed. Distinct from
+ * the Constitution: this is the library, not the worldview.
+ */
+export interface KnowledgeSource {
+  id: string;
+  type: SourceType;
+  input: SourceInput;
+  title: string;
+  author?: string;
+  /** Provenance of the material: a URL, a filename, or free text. */
+  origin?: string;
+  addedAt: ISO;
+  status: SourceStatus;
+  processingState: ProcessingState;
+  processingError?: string;
+  /** The immutable original text. Never edited in place once set. */
+  originalText: string;
+  chunks: KnowledgeChunk[];
+  summary?: string;
+  /** AI/mock-extracted verbatim key quotes (+ any the user saved in the reader). */
+  keyQuotes: string[];
+  keyConcepts: string[];
+  /** Draft first-person belief claims — sent to the Belief Inbox on user action, never auto. */
+  candidateBeliefs: string[];
+  /** Whether the derived fields above came from real AI or the deterministic mock. */
+  derivedSource?: "ai" | "mock";
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
   beliefs: Belief[];
+  sources: KnowledgeSource[];
 }

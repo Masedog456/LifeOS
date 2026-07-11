@@ -103,11 +103,13 @@ npm run build    # expect exit 0
 - [ ] With no `ANTHROPIC_API_KEY`, proposals are deterministic: the same
       capture text always yields the same claims. Verify directly:
       ```bash
-      curl -s -X POST http://localhost:3000/api/propose \
+      curl -s -X POST http://localhost:3000/api/ai \
         -H "content-type: application/json" \
-        -d '{"text":"Attention is the beginning of devotion."}'
+        -d '{"task":"beliefs","text":"Attention is the beginning of devotion."}'
       ```
-      Run twice — output must be identical, with `"source":"mock"`.
+      Run twice — output must be identical, with `"source":"mock"`. (The
+      single `/api/ai` route also serves `summary`, `quotes`, `concepts`,
+      and `question` tasks — see LIFEOS-003.)
 - [ ] Mock proposals are labeled with a small "mock" tag in the Inbox.
 
 ---
@@ -137,6 +139,6 @@ npm run build    # expect exit 0
 - Data is per-browser `localStorage` only — it does not sync across
   devices/browsers and is lost if the browser profile is cleared. (No
   Supabase yet — that is LIFEOS-001 T3–T6, deferred.)
-- The real Anthropic path (`app/api/propose` with a key) is implemented
-  but unverified; the mock path is what has been exercised.
+- The real Anthropic path (`app/api/ai` with a key) is implemented but
+  unverified; the mock path is what has been exercised.
 - No authentication — the app assumes a single trusted local user.
