@@ -213,6 +213,9 @@ function sourceToRow(s: KnowledgeSource) {
     key_concepts: s.keyConcepts,
     candidate_beliefs: s.candidateBeliefs,
     derived_source: s.derivedSource ?? null,
+    chunk_results: s.chunkResults ?? [],
+    analysis: s.analysis ?? null,
+    stages: s.stages ?? null,
     added_at: s.addedAt,
   };
 }
@@ -236,6 +239,9 @@ function rowToSource(r: any, keyQuotes: string[]): KnowledgeSource {
     keyConcepts: (r.key_concepts ?? []) as string[],
     candidateBeliefs: (r.candidate_beliefs ?? []) as string[],
     derivedSource: r.derived_source ?? undefined,
+    chunkResults: (r.chunk_results ?? []) as KnowledgeSource["chunkResults"],
+    analysis: (r.analysis ?? undefined) as KnowledgeSource["analysis"],
+    stages: (r.stages ?? undefined) as KnowledgeSource["stages"],
   };
 }
 

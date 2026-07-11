@@ -26,19 +26,32 @@ export const MANUAL_TEXT_TYPES: SourceType[] = [
 
 export const PROCESSING_LABELS: Record<ProcessingState, string> = {
   captured: "Captured",
+  not_started: "Not analyzed",
+  queued: "Queued",
+  processing: "Analyzing…",
   extracting_text: "Extracting text",
   chunking: "Chunking",
   summarizing: "Summarizing",
   extracting_quotes: "Extracting quotes",
   extracting_concepts: "Extracting concepts",
   generating_beliefs: "Generating beliefs",
-  ready: "Ready",
+  partial: "Partly analyzed",
+  ready: "Analyzed",
   needs_text: "Needs text",
+  cancelled: "Cancelled",
   error: "Error",
 };
 
+const SETTLED: ProcessingState[] = [
+  "ready",
+  "partial",
+  "error",
+  "needs_text",
+  "cancelled",
+  "captured",
+  "not_started",
+];
+
 export function isProcessing(state: ProcessingState): boolean {
-  return (
-    state !== "ready" && state !== "error" && state !== "needs_text" && state !== "captured"
-  );
+  return !SETTLED.includes(state);
 }

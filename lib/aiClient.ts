@@ -6,9 +6,18 @@
  */
 
 import { mockProposals, type ProposalDraft } from "@/lib/proposals";
-import { mockAnswer, mockConcepts, mockQuotes, mockSummary } from "@/lib/mockAI";
+import {
+  mockAnswer,
+  mockConcepts,
+  mockMapChunk,
+  mockQuotes,
+  mockReduceSummary,
+  mockSummary,
+  type ChunkMap,
+} from "@/lib/mockAI";
 
 export type AiSource = "ai" | "mock";
+export type { ChunkMap } from "@/lib/mockAI";
 
 async function call<T>(
   body: Record<string, unknown>,
@@ -47,5 +56,19 @@ export function extractConcepts(text: string) {
 export function askQuestion(text: string, question: string) {
   return call<string>({ task: "question", text, question }, () =>
     mockAnswer(text, question),
+  );
+}
+
+// ---------- Long-source map/reduce (LIFEOS-007) ----------
+
+/** Map one chunk → structured {summary, concepts, quotes(+spans), claims}. One AI call. */
+export function mapChunk(text: string) {
+  return call<ChunkMap>({ task: "map", text }, () => mockMapChunk(text));
+}
+
+/** Reduce many chunk summaries → one source-wide summary. One AI call. */
+export function reduceSummary(summaries: string[]) {
+  return call<string>({ task: "reduce_summary", summaries }, () =>
+    mockReduceSummary(summaries),
   );
 }

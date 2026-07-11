@@ -86,24 +86,74 @@ export type SourceInput = "text" | "pdf" | "url";
 /** Pipeline progress for a source (see lib/pipeline.ts). */
 export type ProcessingState =
   | "captured"
+  | "not_started"
+  | "queued"
+  | "processing"
   | "extracting_text"
   | "chunking"
   | "summarizing"
   | "extracting_quotes"
   | "extracting_concepts"
   | "generating_beliefs"
+  | "partial"
   | "ready"
   | "needs_text"
+  | "cancelled"
   | "error";
 
 /** User-facing reading status, distinct from pipeline processing state. */
 export type SourceStatus = "unread" | "reading" | "read";
 
-/** A chunk of a source's text — the unit future embedding/retrieval will use. */
+/** A chunk of a source's text — the operational unit for long-source analysis. */
 export interface KnowledgeChunk {
   id: string;
   index: number;
   text: string;
+  /** Char offsets into the normalized source text (present for chunks built ≥ LIFEOS-007). */
+  start?: number;
+  end?: number;
+  /** Optional section/chapter label. */
+  label?: string;
+}
+
+// ---------- Long-source analysis (LIFEOS-007) ----------
+
+export type ProcessingMode = "quick" | "full" | "stage";
+export type Coverage = "sampled" | "full";
+export type StageName = "summary" | "quotes" | "concepts" | "beliefs";
+export type StageStatus = "not_started" | "processing" | "processed" | "failed" | "cancelled";
+
+/** A map-stage result for a single chunk. Retains chunk provenance. */
+export interface ChunkResult {
+  chunkId: string;
+  index: number;
+  summary: string;
+  concepts: string[];
+  /** Candidate quotes with best-effort offsets within the source. */
+  quotes: { text: string; start?: number; end?: number }[];
+  claims: string[];
+  source: "ai" | "mock";
+}
+
+/** Coverage + provenance metadata for the latest analysis run. */
+export interface AnalysisMeta {
+  mode: ProcessingMode | null;
+  coverage: Coverage | null;
+  chunksAnalyzed: number;
+  totalChunks: number;
+  /** Whether derived artifacts came from real AI or the deterministic mock. */
+  source: "ai" | "mock" | null;
+  /** Count of AI-returned quotes dropped because they didn't match source text. */
+  unmatchedQuotes?: number;
+  updatedAt?: ISO;
+}
+
+export function emptyStages(): Record<StageName, StageStatus> {
+  return { summary: "not_started", quotes: "not_started", concepts: "not_started", beliefs: "not_started" };
+}
+
+export function emptyAnalysis(): AnalysisMeta {
+  return { mode: null, coverage: null, chunksAnalyzed: 0, totalChunks: 0, source: null };
 }
 
 /**
@@ -134,6 +184,13 @@ export interface KnowledgeSource {
   candidateBeliefs: string[];
   /** Whether the derived fields above came from real AI or the deterministic mock. */
   derivedSource?: "ai" | "mock";
+  // ---- Long-source analysis (LIFEOS-007) ----
+  /** Per-chunk map-stage results (provenance for source-wide artifacts). */
+  chunkResults?: ChunkResult[];
+  /** Independent per-stage status so one failure doesn't erase other results. */
+  stages?: Record<StageName, StageStatus>;
+  /** Coverage + provenance of the latest analysis run. */
+  analysis?: AnalysisMeta;
 }
 
 export interface StoreState {

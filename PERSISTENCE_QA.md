@@ -10,7 +10,11 @@
 ### 1. Supabase database
 1. In your `lifeos` Supabase project, open **SQL Editor** and run
    `supabase/migrations/0001_initial_schema.sql` (paste and execute).
-2. **Project Settings → API**: copy the **Project URL** and the **anon
+2. Then run `supabase/migrations/0002_long_source_analysis.sql` (LIFEOS-007
+   — adds `chunk_results` / `analysis` / `stages` jsonb columns to
+   `sources`). It is additive and rerunnable (`add column if not exists`);
+   it does not touch existing rows, other tables, RLS, or triggers.
+3. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)

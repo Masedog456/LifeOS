@@ -8,6 +8,8 @@
  * reused as-is — this file does not duplicate it.
  */
 
+import { mockProposals } from "@/lib/proposals";
+
 function sentences(text: string): string[] {
   return text
     .split(/(?<=[.!?])\s+|\n+/)
@@ -50,4 +52,35 @@ export function mockAnswer(text: string, question: string): string {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
   const q = question.trim() || "(no question)";
   return `(Mock answer — no AI key configured.) I can't reason over this ~${words}-word source yet. Your question was: "${q}". Set ANTHROPIC_API_KEY to enable real answers.`;
+}
+
+// ---------- Long-source map/reduce mocks (LIFEOS-007) ----------
+
+export interface ChunkMap {
+  summary: string;
+  concepts: string[];
+  quotes: { text: string; start?: number; end?: number }[];
+  claims: string[];
+}
+
+/** Deterministic per-chunk map result (mirrors the real "map" task shape). */
+export function mockMapChunk(text: string): ChunkMap {
+  const quotes = mockQuotes(text).map((q) => {
+    const start = text.indexOf(q);
+    return start < 0 ? { text: q } : { text: q, start, end: start + q.length };
+  });
+  return {
+    summary: mockSummary(text),
+    concepts: mockConcepts(text),
+    quotes,
+    claims: mockProposals(text).map((p) => p.claim),
+  };
+}
+
+/** Deterministic reduce of chunk summaries into a source-wide summary. */
+export function mockReduceSummary(summaries: string[]): string {
+  const joined = summaries.map((s) => s.replace(/^\(Mock summary[^)]*\)\s*/, "")).join(" ");
+  const words = joined.split(/\s+/).filter(Boolean).length;
+  const capped = joined.length > 500 ? joined.slice(0, 497) + "…" : joined;
+  return `(Mock full-source summary · ${summaries.length} chunks · ~${words} words) ${capped}`;
 }

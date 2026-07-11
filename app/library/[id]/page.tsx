@@ -12,9 +12,10 @@ import {
   sourceById,
   useStore,
 } from "@/lib/mvpStore";
-import { processSource } from "@/lib/pipeline";
+import { analyzeSource, cancelAnalysis, estimateCalls, runStage } from "@/lib/pipeline";
 import { askQuestion, generateBeliefs } from "@/lib/aiClient";
 import { PROCESSING_LABELS, SOURCE_TYPE_LABELS, isProcessing } from "@/lib/labels";
+import type { KnowledgeSource, StageName } from "@/types/mvp";
 
 export default function ReaderPage() {
   const params = useParams<{ id: string }>();
@@ -85,7 +86,7 @@ export default function ReaderPage() {
 
   function provideText() {
     if (!pasted.trim()) return;
-    if (setOriginalText(id, pasted.trim())) void processSource(id, pasted.trim());
+    if (setOriginalText(id, pasted.trim())) void analyzeSource(id, pasted.trim(), "quick");
     setPasted("");
   }
 
@@ -149,6 +150,8 @@ export default function ReaderPage() {
         </section>
       ) : (
         <>
+          <AnalysisPanel source={source} />
+
           {/* Derived: summary + concepts */}
           {source.summary && (
             <section className="mb-6">
@@ -301,16 +304,100 @@ export default function ReaderPage() {
                 Mark as read
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => void processSource(id, source.originalText)}
-              className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-            >
-              Re-process
-            </button>
           </footer>
         </>
       )}
     </main>
+  );
+}
+
+const STAGES: StageName[] = ["summary", "quotes", "concepts", "beliefs"];
+
+/**
+ * Minimal analysis controls (LIFEOS-007): Quick / Full, per-stage retry,
+ * status, coverage label, and an approximate AI-call count. No dashboard.
+ */
+function AnalysisPanel({ source }: { source: KnowledgeSource }) {
+  const a = source.analysis;
+  const busy = isProcessing(source.processingState);
+  const quick = estimateCalls(source.id, "quick");
+  const full = estimateCalls(source.id, "full");
+
+  const coverage =
+    a?.coverage === "full"
+      ? "Full coverage"
+      : a?.coverage === "sampled"
+        ? `Sampled — ${a.chunksAnalyzed} of ${a.totalChunks} chunks`
+        : "Not analyzed yet";
+
+  return (
+    <section className="mb-6 rounded-2xl border border-black/[.06] p-4 dark:border-white/[.08]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Analysis</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            {coverage}
+            {a?.source === "ai" && " · AI"}
+            {a?.source === "mock" && " · mock"}
+            {a?.unmatchedQuotes ? ` · ${a.unmatchedQuotes} unmatched quote(s) dropped` : ""}
+          </p>
+        </div>
+        <span className="text-xs text-zinc-400">
+          {isProcessing(source.processingState) && "⏳ "}
+          {PROCESSING_LABELS[source.processingState]}
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {busy ? (
+          <button
+            type="button"
+            onClick={() => cancelAnalysis(source.id)}
+            className="rounded-full border border-black/[.12] px-4 py-1.5 text-sm hover:bg-black/[.04] dark:border-white/[.15] dark:hover:bg-white/[.06]"
+          >
+            Cancel
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => void analyzeSource(source.id, source.originalText, "quick")}
+              className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 dark:bg-zinc-100 dark:text-zinc-900"
+            >
+              Quick analysis (~{quick} call{quick === 1 ? "" : "s"})
+            </button>
+            <button
+              type="button"
+              onClick={() => void analyzeSource(source.id, source.originalText, "full")}
+              className="rounded-full border border-black/[.12] px-4 py-1.5 text-sm font-medium hover:bg-black/[.04] dark:border-white/[.15] dark:hover:bg-white/[.06]"
+            >
+              Full analysis (~{full} call{full === 1 ? "" : "s"})
+            </button>
+          </>
+        )}
+      </div>
+
+      {source.stages && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
+          <span>Stages:</span>
+          {STAGES.map((st) => {
+            const status = source.stages![st];
+            return (
+              <button
+                key={st}
+                type="button"
+                disabled={busy}
+                onClick={() => void runStage(source.id, st)}
+                title={`Re-run ${st}`}
+                className="rounded-full px-2 py-0.5 hover:bg-black/[.04] disabled:opacity-40 dark:hover:bg-white/[.06]"
+              >
+                {st}
+                {status === "failed" ? " ⚠︎ retry" : status === "processed" ? " ↻" : ""}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }

@@ -24,6 +24,30 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-10
+- **LIFEOS-007 — Long-source intelligence + cost controls: implemented.**
+  Sources are now analyzed from their **full content** via chunk-level
+  map/reduce over the single `/api/ai` route (added `map` and
+  `reduce_summary` tasks + deterministic mocks), not just the opening 8k.
+  Chunks became operational: `buildChunks` gives stable ids +
+  char offsets, deterministic across reruns. Three modes: **Quick**
+  (default on ingest — representative 3-chunk sample, labeled *sampled*),
+  **Full** (all chunks up to a 40-chunk cap), **on-demand** per-stage
+  retry. Reduce is deterministic for concepts/quotes/beliefs (conservative
+  dedup, `lib/dedup.ts`) and one AI call for the source summary — so short
+  sources cost ~1 call, Full ≈ N+1. Cost controls: concurrency 3,
+  skip-already-mapped (idempotent/resumable), approximate call count shown,
+  cancel support. Extended `ProcessingState` + independent per-stage status
+  (a stage failing never erases another's results). Provenance: per-source
+  `chunkResults` + `analysis` metadata (mode/coverage/source ai|mock/
+  unmatchedQuotes); quotes verified as exact source substrings, unmatched
+  dropped + counted. Minimal Reader analysis panel (Quick/Full/per-stage
+  retry/status/coverage/≈calls). Additive migration
+  `0002_long_source_analysis.sql` (rerunnable jsonb columns; RLS/triggers
+  untouched) + adapter mapping. Verified: 9/9 regression + 12/12 long-source
+  checks (deterministic chunking, sampled vs full coverage, beyond-8000
+  processing, exact-quote provenance, dedup, refresh persistence, per-stage
+  retry) with zero runtime errors; `lint`/`build` green. No graphs,
+  embeddings, vectors, megathreads, agents, OCR, EPUB, or new AI routes.
 - **LIFEOS-006 — Knowledge Ingestion Engine: implemented.** Extracted a
   durable ingestion architecture out of the UI without changing UX,
   persistence, auth, or the single AI route. New `lib/ingestion/`: an
@@ -616,3 +640,27 @@ scope or order.
   (pdf/SSRF/400/graceful-fetch-fallback), `lint`=0, `build`=0. No graphs,
   embeddings, vectors, search engines, megathreads, background agents, or
   additional AI routes.
+- 2026-07-10 — Implemented **LIFEOS-007 long-source intelligence + cost
+  controls**. New: `lib/dedup.ts` (deterministic conservative dedup),
+  `supabase/migrations/0002_long_source_analysis.sql` (additive/rerunnable
+  jsonb columns `chunk_results`/`analysis`/`stages` on `sources`; RLS +
+  immutability triggers untouched; existing data preserved). Extended
+  `types/mvp.ts` (chunk offsets/label; `ChunkResult`, `AnalysisMeta`,
+  `StageStatus`, `ProcessingMode`, `Coverage`; new `ProcessingState`
+  values; `emptyStages`/`emptyAnalysis`). Rewrote `lib/pipeline.ts` into
+  chunk-based map/reduce with modes (quick/full), representative sampling,
+  40-chunk safety cap, concurrency 3, cooperative cancel, skip-already-
+  mapped idempotency, per-stage status, and `estimateCalls`. Extended the
+  single AI route (`app/api/ai/route.ts`) with `map` (structured per-chunk,
+  with quote-span verification) and `reduce_summary` tasks + validation +
+  mock fallback; added mocks to `lib/mockAI.ts` and helpers to
+  `lib/aiClient.ts`. Updated `lib/mvpStore.ts` (`getSource`, init new
+  fields), `lib/labels.ts` (new state labels), the Reader
+  (`app/library/[id]/page.tsx` — minimal `AnalysisPanel`: Quick/Full/
+  per-stage retry/status/coverage/≈calls), and `lib/adapters/supabaseAdapter.ts`
+  (map new columns). Ingestion default stays conservative (auto-Quick).
+  Verified 9/9 regression + 12/12 long-source checks via the mock path;
+  real-AI + Supabase persistence of the new columns remain credential-
+  dependent (pending). Docs updated (`INGESTION.md`, `PERSISTENCE_QA.md`,
+  `PROJECT_MEMORY.md`). No product redesign; no graphs/embeddings/vectors/
+  megathreads/agents/OCR/EPUB/comparative intelligence; still one AI route.

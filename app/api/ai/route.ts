@@ -1,38 +1,58 @@
 /**
  * The SINGLE AI route for all of LifeOS.
  *
- * POST { task, text, question?, count? }
- *   task "beliefs"  -> { result: ProposalDraft[], source }
- *   task "summary"  -> { result: string, source }
- *   task "quotes"   -> { result: string[], source }
- *   task "concepts" -> { result: string[], source }
- *   task "question" -> { result: string, source }
+ * POST { task, text?, question?, summaries? }
+ *   task "beliefs"        -> { result: ProposalDraft[], source }
+ *   task "summary"        -> { result: string, source }
+ *   task "quotes"         -> { result: string[], source }
+ *   task "concepts"       -> { result: string[], source }
+ *   task "question"       -> { result: string, source }
+ *   task "map"            -> { result: ChunkMap, source }        (one chunk → structured)
+ *   task "reduce_summary" -> { result: string, source }          (chunk summaries → one)
  *
  * If ANTHROPIC_API_KEY is set, makes exactly one Anthropic call for the
  * task. Otherwise — or on any failure — returns deterministic mock output
- * so the product always works offline. This is the only route that talks
- * to a model: no background agents, roles, embeddings, or vector/graph
- * search anywhere in the system.
+ * so the product always works offline. This is the only route that talks to
+ * a model. Source text and keys are never logged.
  */
 
 import { NextResponse } from "next/server";
 import { mockProposals, type ProposalDraft } from "@/lib/proposals";
-import { mockAnswer, mockConcepts, mockQuotes, mockSummary } from "@/lib/mockAI";
+import {
+  mockAnswer,
+  mockConcepts,
+  mockMapChunk,
+  mockQuotes,
+  mockReduceSummary,
+  mockSummary,
+  type ChunkMap,
+} from "@/lib/mockAI";
 
-// Allow the serverless function up to 30s on Vercel (default is 10s). Our
-// own abort timeout below is kept safely under this so the graceful
-// mock-fallback path always runs before the platform kills the function.
 export const maxDuration = 30;
 export const runtime = "nodejs";
 
-type Task = "beliefs" | "summary" | "quotes" | "concepts" | "question";
+type Task =
+  | "beliefs"
+  | "summary"
+  | "quotes"
+  | "concepts"
+  | "question"
+  | "map"
+  | "reduce_summary";
 
-const ALLOWED_TASKS = new Set<Task>(["beliefs", "summary", "quotes", "concepts", "question"]);
-/** Bound the input we accept; protects the model call and our own memory. */
+const ALLOWED_TASKS = new Set<Task>([
+  "beliefs",
+  "summary",
+  "quotes",
+  "concepts",
+  "question",
+  "map",
+  "reduce_summary",
+]);
+
 const MAX_INPUT_CHARS = 50_000;
-/** How much of the input the model actually sees (spans still resolve against full text). */
 const MAX_MODEL_CHARS = 12_000;
-/** Under maxDuration (30s) so our try/catch degrades to mock before Vercel times out. */
+const MAX_SUMMARIES = 60;
 const REQUEST_TIMEOUT_MS = 25_000;
 
 interface AnthropicTextBlock {
@@ -41,6 +61,13 @@ interface AnthropicTextBlock {
 }
 interface AnthropicResponse {
   content?: AnthropicTextBlock[];
+}
+
+interface AiInput {
+  task: Task;
+  text: string;
+  question: string;
+  summaries: string[];
 }
 
 function rawText(data: AnthropicResponse): string {
@@ -86,9 +113,41 @@ function parseStringArray(raw: string): string[] {
     .slice(0, 8);
 }
 
-function promptFor(task: Task, text: string, question: string): string {
-  const src = `Source text:\n"""\n${text.slice(0, MAX_MODEL_CHARS)}\n"""`;
-  switch (task) {
+/** Parse a map result and verify quotes are exact substrings of the chunk text. */
+function parseMap(raw: string, text: string): ChunkMap {
+  const obj = JSON.parse(jsonSlice(raw, "{")) as {
+    summary?: unknown;
+    concepts?: unknown;
+    quotes?: unknown;
+    claims?: unknown;
+  };
+  const strArr = (v: unknown, n: number) =>
+    Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+          .map((x) => x.trim())
+          .slice(0, n)
+      : [];
+  const quotes = (Array.isArray(obj.quotes) ? obj.quotes : [])
+    .map((q) => (typeof q === "string" ? q : (q as { text?: string })?.text))
+    .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    .map((t) => t.trim())
+    .map((t) => {
+      const start = text.indexOf(t);
+      return start < 0 ? null : { text: t, start, end: start + t.length };
+    })
+    .filter((q): q is { text: string; start: number; end: number } => q !== null)
+    .slice(0, 6);
+  return {
+    summary: typeof obj.summary === "string" ? obj.summary.trim() : "",
+    concepts: strArr(obj.concepts, 6),
+    quotes,
+    claims: strArr(obj.claims, 4),
+  };
+}
+
+function promptFor(input: AiInput): string {
+  const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
+  switch (input.task) {
     case "summary":
       return `Summarize the following in 2–4 sentences, plainly, no preamble.\n\n${src}`;
     case "quotes":
@@ -96,7 +155,25 @@ function promptFor(task: Task, text: string, question: string): string {
     case "concepts":
       return `Identify up to 5 key concepts (1–3 words each) in the text. Return ONLY a JSON array of strings.\n\n${src}`;
     case "question":
-      return `Answer the user's question using ONLY the source text. If the text doesn't say, say so. Be concise.\n\nQuestion: ${question}\n\n${src}`;
+      return `Answer the user's question using ONLY the source text. If the text doesn't say, say so. Be concise.\n\nQuestion: ${input.question}\n\n${src}`;
+    case "map":
+      return [
+        "Analyze ONE chunk of a longer source. Return ONLY a JSON object:",
+        '  { "summary": string (1–2 sentences),',
+        '    "concepts": string[] (up to 5, 1–3 words each),',
+        '    "quotes": string[] (up to 4 EXACT verbatim substrings of the chunk),',
+        '    "claims": string[] (0–3 first-person belief claims, ONLY if strongly supported) }',
+        "Do not invent quotes or claims not present in the chunk.",
+        "",
+        src,
+      ].join("\n");
+    case "reduce_summary":
+      return [
+        "Combine these chunk summaries into ONE coherent summary of the whole",
+        "source (3–6 sentences). Use only what the summaries state; add nothing.",
+        "",
+        input.summaries.map((s, i) => `[chunk ${i + 1}] ${s}`).join("\n"),
+      ].join("\n");
     case "beliefs":
     default:
       return [
@@ -110,45 +187,47 @@ function promptFor(task: Task, text: string, question: string): string {
   }
 }
 
-function mockFor(task: Task, text: string, question: string): unknown {
-  switch (task) {
+function mockFor(input: AiInput): unknown {
+  switch (input.task) {
     case "summary":
-      return mockSummary(text);
+      return mockSummary(input.text);
     case "quotes":
-      return mockQuotes(text);
+      return mockQuotes(input.text);
     case "concepts":
-      return mockConcepts(text);
+      return mockConcepts(input.text);
     case "question":
-      return mockAnswer(text, question);
+      return mockAnswer(input.text, input.question);
+    case "map":
+      return mockMapChunk(input.text);
+    case "reduce_summary":
+      return mockReduceSummary(input.summaries);
     case "beliefs":
     default:
-      return mockProposals(text);
+      return mockProposals(input.text);
   }
 }
 
-function parseFor(task: Task, raw: string, text: string): unknown {
-  switch (task) {
+function parseFor(input: AiInput, raw: string): unknown {
+  switch (input.task) {
     case "summary":
     case "question":
+    case "reduce_summary":
       return raw;
     case "quotes":
     case "concepts":
       return parseStringArray(raw);
+    case "map":
+      return parseMap(raw, input.text);
     case "beliefs":
     default: {
-      const claims = parseClaims(raw, text);
+      const claims = parseClaims(raw, input.text);
       if (claims.length === 0) throw new Error("empty proposals");
       return claims;
     }
   }
 }
 
-async function callAnthropic(
-  key: string,
-  task: Task,
-  text: string,
-  question: string,
-): Promise<unknown> {
+async function callAnthropic(key: string, input: AiInput): Promise<unknown> {
   const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -163,65 +242,62 @@ async function callAnthropic(
       body: JSON.stringify({
         model,
         max_tokens: 1024,
-        messages: [{ role: "user", content: promptFor(task, text, question) }],
+        messages: [{ role: "user", content: promptFor(input) }],
       }),
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`anthropic_${res.status}`);
     const data = (await res.json()) as AnthropicResponse;
-    return parseFor(task, rawText(data), text); // may throw on invalid output
+    return parseFor(input, rawText(data));
   } finally {
     clearTimeout(timeout);
   }
 }
 
 export async function POST(request: Request) {
-  // --- request validation ---
-  let task: Task;
-  let text: string;
-  let question: string;
+  let input: AiInput;
   try {
     const body = (await request.json()) as {
       task?: unknown;
       text?: unknown;
       question?: unknown;
+      summaries?: unknown;
     };
     const t = typeof body.task === "string" ? (body.task as Task) : "beliefs";
     if (!ALLOWED_TASKS.has(t)) {
       return NextResponse.json({ error: "invalid task" }, { status: 400 });
     }
-    task = t;
-    text = (typeof body.text === "string" ? body.text : "").slice(0, MAX_INPUT_CHARS).trim();
-    question = (typeof body.question === "string" ? body.question : "")
-      .slice(0, 2_000)
-      .trim();
+    input = {
+      task: t,
+      text: (typeof body.text === "string" ? body.text : "").slice(0, MAX_INPUT_CHARS).trim(),
+      question: (typeof body.question === "string" ? body.question : "").slice(0, 2_000).trim(),
+      summaries: Array.isArray(body.summaries)
+        ? body.summaries
+            .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+            .map((s) => s.trim())
+            .slice(0, MAX_SUMMARIES)
+        : [],
+    };
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
 
-  // Empty input → deterministic mock (never an error; keeps the UI flowing).
-  if (!text) {
-    return NextResponse.json({ result: mockFor(task, "", question), source: "mock" });
+  const hasInput = input.task === "reduce_summary" ? input.summaries.length > 0 : input.text.length > 0;
+  if (!hasInput) {
+    return NextResponse.json({ result: mockFor(input), source: "mock" });
   }
 
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
-    // No key configured → mock. In production this is surfaced via source:"mock".
-    return NextResponse.json({ result: mockFor(task, text, question), source: "mock" });
+    return NextResponse.json({ result: mockFor(input), source: "mock" });
   }
 
   try {
-    const result = await callAnthropic(key, task, text, question);
+    const result = await callAnthropic(key, input);
     return NextResponse.json({ result, source: "ai" });
   } catch (e) {
-    // Log the failure reason ONLY — never the source text.
     const reason = e instanceof Error ? e.message : "unknown";
-    console.error(`[ai] task=${task} failed: ${reason}; serving mock`);
-    // Degrade to mock so the product keeps working; clearly marked mock.
-    return NextResponse.json({
-      result: mockFor(task, text, question),
-      source: "mock",
-      degraded: true,
-    });
+    console.error(`[ai] task=${input.task} failed: ${reason}; serving mock`);
+    return NextResponse.json({ result: mockFor(input), source: "mock", degraded: true });
   }
 }

@@ -19,6 +19,7 @@ import type {
   RevisionEntry,
   StoreState,
 } from "@/types/mvp";
+import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
 import { clearState, loadState, saveLocalOnly, saveState } from "@/lib/persistence";
 
@@ -323,9 +324,17 @@ export function addSource(
     keyQuotes: [],
     keyConcepts: [],
     candidateBeliefs: [],
+    chunkResults: [],
+    stages: emptyStages(),
+    analysis: emptyAnalysis(),
   };
   setState({ ...state, sources: [source, ...state.sources] });
   return source.id;
+}
+
+/** Non-hook read of the current source (for the pipeline, which isn't a component). */
+export function getSource(sourceId: string): KnowledgeSource | undefined {
+  return state.sources.find((s) => s.id === sourceId);
 }
 
 function updateSource(sourceId: string, update: (s: KnowledgeSource) => KnowledgeSource) {

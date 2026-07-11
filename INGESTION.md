@@ -55,34 +55,56 @@ with an SSRF guard, timeout, and size caps) and `mode: "pdf"` (the seam,
 currently returns `needsText`). This is where a better HTML extractor or a
 real PDF parser plugs in.
 
-## The pipeline (`lib/pipeline.ts`)
+## The pipeline (`lib/pipeline.ts`) — long-source map/reduce (LIFEOS-007)
 
-An **ordered array of replaceable stages** (`PIPELINE_STAGES`). Swapping,
-reordering, or inserting a stage touches only that array.
+A source is analyzed from its **full content** via chunk-level map/reduce,
+cost-aware by default:
 
-| Stage | Where it runs | AI |
-|-------|---------------|----|
-| Capture | ingestion (`ingest`) | — |
-| Extraction | adapter | — |
-| Normalization | `normalizeStage` | — |
-| Chunking | `chunkStage` | — |
-| Metadata | `metadataStage` (captured at ingestion; seam for derived) | — |
-| Summary | `summaryStage` | ✓ |
-| Quotes | `quotesStage` | ✓ |
-| Concepts | `conceptsStage` | ✓ |
-| Claims (belief candidates) | `beliefCandidatesStage` | ✓ |
-| Questions | `questionsStage` — **inactive seam** | — |
-| Relationships | `relationshipsStage` — **inactive seam** | — |
-| Library | the source is in the library throughout | — |
-| Inbox | user sends candidates (never automatic) | — |
+```
+normalize → chunk (stable, with char offsets) → select chunks (by mode) →
+MAP each selected chunk (1 AI call each) → REDUCE:
+   · concepts / quotes / beliefs  = deterministic dedup   (0 AI calls)
+   · summary                      = 1 AI call (skipped when only 1 chunk)
+```
 
-The immutable `originalText` is never mutated; a normalized working copy
-flows through the pipeline context. Every derived artifact (summary, quotes,
-concepts, candidate beliefs) is stored **on the source**, so it always
-references its origin. Candidate beliefs never auto-enter the Inbox or
-Constitution — the human sends them.
+**Chunks are operational, not decorative.** `buildChunks` produces stable
+ids (`<sourceId>:c<index>`), char `start`/`end` offsets into the normalized
+text, and is deterministic — reruns don't move boundaries. Quote offsets are
+lifted from chunk-local to source-wide so every artifact traces back to the
+source.
+
+**Processing modes:**
+- **Quick** (default on ingest) — a representative, evenly-spaced subset
+  (`QUICK_CHUNKS = 3`, sampling beyond the opening prefix). Labeled
+  *sampled*; state → `partial`.
+- **Full** — all chunks up to `FULL_CHUNK_LIMIT = 40`. Labeled *full*;
+  state → `ready` (or `partial` if the cap is hit).
+- **On-demand** — re-run a single stage (`runStage`): concepts/quotes/
+  beliefs re-reduce from stored chunk results (0 AI calls); summary re-runs
+  the reduce (1 AI call).
+
+**Cost control:** concurrency 3, already-mapped chunks are skipped
+(idempotent/resumable), an approximate call count is shown before running
+(Quick ≈ min(3,N)+1, Full ≈ min(40,N)+1), and analysis is cancellable
+(cooperative, between chunks).
+
+**Per-stage status** (`summary`/`quotes`/`concepts`/`beliefs`): a failure in
+one stage never erases another's results (deterministic artifacts are
+persisted before the summary reduce runs); each stage is retryable
+independently.
+
+**Provenance guarantees:** every source stores `chunkResults` (per-chunk map
+output) + `analysis` (`mode`, `coverage`, `chunksAnalyzed`, `totalChunks`,
+`source: ai|mock`, `unmatchedQuotes`, `updatedAt`). Quotes are verified to be
+**exact substrings** of the source; AI-returned quotes that don't match are
+dropped and counted. The reducer only dedups chunk output — it never invents
+support that wasn't in a chunk.
+
+The immutable `originalText` is never mutated (a normalized working copy is
+used). Candidate beliefs never auto-enter the Inbox or Constitution — the
+human sends them.
 
 ## Deliberate non-goals (this milestone)
 No embeddings, vector DB, search engine, graph, megathreads, background
-agents, or OCR/transcription. Questions/Relationships stages exist as
-inactive seams only. These are future milestones.
+agents, comparative intelligence, OCR/transcription, or EPUB. These are
+future milestones.
