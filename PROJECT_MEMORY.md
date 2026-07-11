@@ -24,6 +24,23 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-10
+- **LIFEOS-006 — Knowledge Ingestion Engine: implemented.** Extracted a
+  durable ingestion architecture out of the UI without changing UX,
+  persistence, auth, or the single AI route. New `lib/ingestion/`: an
+  `IngestionAdapter` interface + registry + three adapters (text = fully
+  automated; url = automated, dependency-free HTML→text via a new non-AI
+  `/api/extract` route with SSRF guard/timeout/caps and graceful fallback;
+  pdf = clean `extractPdfText` seam with honest needs-text fallback — no
+  fragile dependency added). `lib/ingestion/index.ts` `ingest()` is the
+  single entry the UI calls. Refactored `lib/pipeline.ts` into an ordered,
+  replaceable `PIPELINE_STAGES` array (normalize → chunk → metadata →
+  summary → quotes → concepts → belief-candidates, + inactive questions/
+  relationships seams), preserving behavior and never mutating the
+  immutable original. `AddSource.tsx` now routes through `ingest()` (same
+  three tabs; URL genuinely fetches now). Added `INGESTION.md`. Verified
+  9/9 flow regression, `/api/extract` logic paths (pdf seam, SSRF block,
+  400, graceful public-fetch fallback), lint+build green. No graphs,
+  embeddings, vectors, megathreads, background agents, or new AI routes.
 - **LIFEOS-005 — Production deployment prep + verification: done for
   everything possible without live access; live checks PENDING.** Verified
   the repo is Vercel-ready: env usage is exactly the three expected vars
@@ -578,3 +595,24 @@ scope or order.
   cross-browser checks are credential/deploy-dependent and were NOT
   performed here — they remain PENDING and are unclaimed. No product
   features, UI, or ontology changes.
+- 2026-07-10 — Implemented **LIFEOS-006 knowledge ingestion engine** (an
+  architecture pass, not new product features). New files:
+  `lib/ingestion/{types,textAdapter,urlAdapter,pdfAdapter,registry,index}.ts`
+  (adapter interface + registry + 3 adapters + `ingest()` entry),
+  `app/api/extract/route.ts` (non-AI extraction seam: real URL HTML→text
+  with SSRF guard + 12s timeout + 3MB/100k caps; PDF seam returns
+  needsText), `INGESTION.md` (architecture doc + how to add adapters).
+  Refactored `lib/pipeline.ts` from a monolithic function into an ordered
+  `PIPELINE_STAGES` array where each stage is independently replaceable
+  (added a normalize stage that never touches the immutable original, and
+  inactive questions/relationships seams). Refactored `components/AddSource.tsx`
+  to call `ingest()` (UX unchanged — same Text/PDF/URL tabs; URL now
+  actually fetches, with a "Fetching…" state, and degrades to paste on
+  failure). Reused the existing ontology `SourceType`/`SourceInput`; added
+  no schema columns, so persistence/auth/AI contracts are untouched.
+  Deliberately did NOT add pdf.js or any PDF parser (the ticket's "don't
+  hack around limitations") — PDF stays a clean seam. Verified: 9/9 flow
+  regression through the new adapter/pipeline, `/api/extract` paths
+  (pdf/SSRF/400/graceful-fetch-fallback), `lint`=0, `build`=0. No graphs,
+  embeddings, vectors, search engines, megathreads, background agents, or
+  additional AI routes.

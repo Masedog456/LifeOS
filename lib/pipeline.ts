@@ -1,12 +1,29 @@
 /**
- * The knowledge processing pipeline (LIFEOS-003).
+ * The knowledge processing pipeline (LIFEOS-003, restructured LIFEOS-006).
  *
- * Stages: capture → extract text → chunk → summary → quotes → concepts →
- * candidate belief claims. Each AI stage goes through the single AI route
- * (via lib/aiClient), and every stage's progress is written back to the
- * source so the Library UI can show live processing state. Candidate
- * beliefs are stored on the source only — they are NOT auto-pushed into
- * the Belief Inbox and never become Constitution entries automatically.
+ * A source moves through an ORDERED, REPLACEABLE list of stages. Each stage
+ * reads/writes via the store and updates the source's processing state, so
+ * any stage can be swapped, reordered, or added without changing the others
+ * or the rest of the system. The immutable `originalText` is never mutated;
+ * a normalized working copy is passed through the pipeline context.
+ *
+ * Full stage map (Capture → … → Inbox):
+ *   Capture         — done at ingestion (adapter + addSource), before this runs
+ *   Extraction      — done by the ingestion adapter (raw → text)
+ *   Normalization   — normalizeStage
+ *   Chunking        — chunkStage
+ *   Metadata        — metadataStage (captured at ingestion; seam for derived meta)
+ *   Summary         — summaryStage        (AI)
+ *   Quotes          — quotesStage         (AI)
+ *   Concepts        — conceptsStage       (AI)
+ *   Claims          — beliefCandidatesStage (AI)
+ *   Questions       — questionsStage      (inactive seam — no AI cost yet)
+ *   Relationships   — relationshipsStage  (inactive seam)
+ *   Library         — the source IS in the library throughout
+ *   Inbox           — user sends candidates to the Belief Inbox (never automatic)
+ *
+ * Candidate beliefs are stored on the source only; they never auto-enter the
+ * Belief Inbox or the Constitution.
  */
 
 import {
@@ -19,6 +36,7 @@ import { patchSource, setProcessingState } from "@/lib/mvpStore";
 import type { KnowledgeChunk } from "@/types/mvp";
 
 const CHUNK_TARGET = 1200;
+const MAX_MODEL_CHARS = 8000;
 
 /** Split text into ~CHUNK_TARGET-sized chunks on paragraph/sentence boundaries. */
 export function chunkText(text: string): KnowledgeChunk[] {
@@ -35,7 +53,6 @@ export function chunkText(text: string): KnowledgeChunk[] {
       buf = "";
     }
     if (p.length > CHUNK_TARGET) {
-      // Very long paragraph: flush and split on sentences.
       if (buf) {
         pieces.push(buf.trim());
         buf = "";
@@ -57,36 +74,120 @@ export function chunkText(text: string): KnowledgeChunk[] {
   return pieces.map((t, index) => ({ id: `chunk_${index}`, index, text: t }));
 }
 
+/** Light normalization — never mutates the immutable original. */
+function normalize(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((l) => l.replace(/[ \t\f]+$/g, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// ---------- pipeline stages ----------
+
+interface PipelineContext {
+  sourceId: string;
+  /** Immutable original as stored on the source. */
+  originalText: string;
+  /** Normalized working text used by downstream stages. */
+  text: string;
+}
+
+interface PipelineStage {
+  name: string;
+  run(ctx: PipelineContext): Promise<void>;
+}
+
+const normalizeStage: PipelineStage = {
+  name: "normalization",
+  async run(ctx) {
+    ctx.text = normalize(ctx.originalText);
+  },
+};
+
+const chunkStage: PipelineStage = {
+  name: "chunking",
+  async run(ctx) {
+    setProcessingState(ctx.sourceId, "chunking");
+    patchSource(ctx.sourceId, { chunks: chunkText(ctx.text) });
+  },
+};
+
+const metadataStage: PipelineStage = {
+  name: "metadata",
+  async run() {
+    // Metadata (title/author/origin/type) is captured at ingestion. This is
+    // the seam for future derived metadata (word count, language, etc.) —
+    // intentionally a no-op today to avoid storage churn and cost.
+  },
+};
+
+const summaryStage: PipelineStage = {
+  name: "summary",
+  async run(ctx) {
+    setProcessingState(ctx.sourceId, "summarizing");
+    const { result, source } = await summarize(ctx.text.slice(0, MAX_MODEL_CHARS));
+    patchSource(ctx.sourceId, { summary: result, derivedSource: source });
+  },
+};
+
+const quotesStage: PipelineStage = {
+  name: "quotes",
+  async run(ctx) {
+    setProcessingState(ctx.sourceId, "extracting_quotes");
+    const { result } = await extractQuotes(ctx.text.slice(0, MAX_MODEL_CHARS));
+    patchSource(ctx.sourceId, { keyQuotes: result });
+  },
+};
+
+const conceptsStage: PipelineStage = {
+  name: "concepts",
+  async run(ctx) {
+    setProcessingState(ctx.sourceId, "extracting_concepts");
+    const { result } = await extractConcepts(ctx.text.slice(0, MAX_MODEL_CHARS));
+    patchSource(ctx.sourceId, { keyConcepts: result });
+  },
+};
+
+const beliefCandidatesStage: PipelineStage = {
+  name: "belief-candidates",
+  async run(ctx) {
+    setProcessingState(ctx.sourceId, "generating_beliefs");
+    const { result } = await generateBeliefs(ctx.text.slice(0, MAX_MODEL_CHARS));
+    patchSource(ctx.sourceId, { candidateBeliefs: result.map((b) => b.claim) });
+  },
+};
+
+/** Inactive seams — defined so the architecture is complete, but no-ops
+ *  today (they'd add AI cost + UI surface; out of scope per LIFEOS-006). */
+const questionsStage: PipelineStage = { name: "questions", async run() {} };
+const relationshipsStage: PipelineStage = { name: "relationships", async run() {} };
+
+/** The ordered pipeline. Replace/reorder/insert stages here — nothing else. */
+export const PIPELINE_STAGES: PipelineStage[] = [
+  normalizeStage,
+  chunkStage,
+  metadataStage,
+  summaryStage,
+  quotesStage,
+  conceptsStage,
+  beliefCandidatesStage,
+  questionsStage,
+  relationshipsStage,
+];
+
 /**
- * Run the full pipeline over a source's immutable original text, writing
- * summary / key quotes / key concepts / candidate beliefs back to it.
- * Safe to call again to re-process.
+ * Run the full pipeline over a source's immutable original text. Safe to
+ * call again to re-process.
  */
 export async function processSource(sourceId: string, originalText: string): Promise<void> {
+  const ctx: PipelineContext = { sourceId, originalText, text: originalText };
   try {
-    setProcessingState(sourceId, "chunking");
-    const chunks = chunkText(originalText);
-    patchSource(sourceId, { chunks });
-
-    // Bound what we send to the model; the mock ignores length anyway.
-    const text = originalText.slice(0, 8000);
-
-    setProcessingState(sourceId, "summarizing");
-    const summary = await summarize(text);
-    patchSource(sourceId, { summary: summary.result, derivedSource: summary.source });
-
-    setProcessingState(sourceId, "extracting_quotes");
-    const quotes = await extractQuotes(text);
-    patchSource(sourceId, { keyQuotes: quotes.result });
-
-    setProcessingState(sourceId, "extracting_concepts");
-    const concepts = await extractConcepts(text);
-    patchSource(sourceId, { keyConcepts: concepts.result });
-
-    setProcessingState(sourceId, "generating_beliefs");
-    const beliefs = await generateBeliefs(text);
-    patchSource(sourceId, { candidateBeliefs: beliefs.result.map((b) => b.claim) });
-
+    for (const stage of PIPELINE_STAGES) {
+      await stage.run(ctx);
+    }
     setProcessingState(sourceId, "ready");
   } catch (e) {
     setProcessingState(sourceId, "error", e instanceof Error ? e.message : "processing failed");

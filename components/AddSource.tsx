@@ -3,8 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import type { SourceType } from "@/types/mvp";
-import { addSource } from "@/lib/mvpStore";
-import { processSource } from "@/lib/pipeline";
+import { ingest, type IngestionRequest } from "@/lib/ingestion";
 import { MANUAL_TEXT_TYPES, SOURCE_TYPE_LABELS } from "@/lib/labels";
 
 type Mode = "text" | "pdf" | "url";
@@ -23,6 +22,7 @@ export default function AddSource() {
   const [type, setType] = useState<SourceType>("other");
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
 
   function reset() {
@@ -33,59 +33,22 @@ export default function AddSource() {
     setType("other");
   }
 
-  function addText() {
-    if (!body.trim() || submitting.current) return;
+  async function submit(request: IngestionRequest) {
+    if (submitting.current) return;
     submitting.current = true;
-    const id = addSource({
-      type,
-      input: "text",
-      title: title.trim() || body.trim().slice(0, 48),
-      author,
-      originalText: body.trim(),
-    });
-    void processSource(id, body.trim());
+    setBusy(true);
+    const id = await ingest(request);
     submitting.current = false;
-    reset();
-    router.push(`/library/${id}`);
-  }
-
-  function addUrl() {
-    if (!url.trim() || submitting.current) return;
-    submitting.current = true;
-    const id = addSource({
-      type: "webpage",
-      input: "url",
-      title: title.trim() || url.trim(),
-      origin: url.trim(),
-      originalText: "",
-      processingState: "needs_text",
-    });
-    submitting.current = false;
+    setBusy(false);
     reset();
     router.push(`/library/${id}`);
   }
 
   function onPdf(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || submitting.current) return;
-    submitting.current = true;
-    const name = file.name.replace(/\.pdf$/i, "");
-    // Automated PDF text extraction is a later ingestion adapter; for now
-    // the source is created with provenance and awaits its text in the
-    // reader (see PROJECT_MEMORY / LIFEOS-003 notes).
-    const id = addSource({
-      type: "pdf",
-      input: "pdf",
-      title: title.trim() || name,
-      author,
-      origin: file.name,
-      originalText: "",
-      processingState: "needs_text",
-    });
-    submitting.current = false;
-    reset();
+    if (!file) return;
     e.target.value = "";
-    router.push(`/library/${id}`);
+    void submit({ kind: "pdf", file, title, author });
   }
 
   const input =
@@ -150,11 +113,13 @@ export default function AddSource() {
             />
             <button
               type="button"
-              onClick={addText}
-              disabled={!body.trim()}
+              onClick={() =>
+                void submit({ kind: "text", text: body, title, author, sourceType: type })
+              }
+              disabled={!body.trim() || busy}
               className="self-start rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-30 dark:bg-zinc-100 dark:text-zinc-900"
             >
-              Add & process
+              {busy ? "Adding…" : "Add & process"}
             </button>
           </>
         )}
@@ -168,27 +133,33 @@ export default function AddSource() {
               onChange={(e) => setUrl(e.target.value)}
             />
             <p className="text-xs text-zinc-400">
-              The article body is pasted in the reader for now — automatic
-              fetching is a later ingestion adapter.
+              LifeOS fetches the article text automatically. If the page can&apos;t
+              be read, you&apos;ll paste the text in the reader.
             </p>
             <button
               type="button"
-              onClick={addUrl}
-              disabled={!url.trim()}
+              onClick={() => void submit({ kind: "url", url, title })}
+              disabled={!url.trim() || busy}
               className="self-start rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-30 dark:bg-zinc-100 dark:text-zinc-900"
             >
-              Add source
+              {busy ? "Fetching…" : "Add source"}
             </button>
           </>
         )}
 
         {mode === "pdf" && (
           <>
-            <input className={input} type="file" accept="application/pdf" onChange={onPdf} />
+            <input
+              className={input}
+              type="file"
+              accept="application/pdf"
+              disabled={busy}
+              onChange={onPdf}
+            />
             <p className="text-xs text-zinc-400">
-              The PDF is registered with its filename as provenance; its text
-              is provided in the reader for now — automatic extraction is a
-              later ingestion adapter.
+              The PDF is registered with its filename as provenance; paste its
+              text in the reader to process it (automatic extraction is a
+              planned adapter).
             </p>
           </>
         )}

@@ -37,6 +37,8 @@ npm run lint    # lint check
   oversight boundaries (design only — nothing here is implemented yet)
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — proposed technical architecture
   (design/spec only — nothing here is implemented yet)
+- [INGESTION.md](./INGESTION.md) — the ingestion architecture: adapters,
+  the extraction seam, and the replaceable processing pipeline (LIFEOS-006)
 - [AI_AGENT_RULES.md](./AI_AGENT_RULES.md) — rules AI agents must follow
   when working on this codebase
 - [PILOT_GOSPEL_OF_THOMAS_SAYING_37.md](./PILOT_GOSPEL_OF_THOMAS_SAYING_37.md)
