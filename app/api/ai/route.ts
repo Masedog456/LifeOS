@@ -21,6 +21,13 @@ import { mockAnswer, mockConcepts, mockQuotes, mockSummary } from "@/lib/mockAI"
 
 type Task = "beliefs" | "summary" | "quotes" | "concepts" | "question";
 
+const ALLOWED_TASKS = new Set<Task>(["beliefs", "summary", "quotes", "concepts", "question"]);
+/** Bound the input we accept; protects the model call and our own memory. */
+const MAX_INPUT_CHARS = 50_000;
+/** How much of the input the model actually sees (spans still resolve against full text). */
+const MAX_MODEL_CHARS = 12_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+
 interface AnthropicTextBlock {
   type: string;
   text?: string;
@@ -73,7 +80,7 @@ function parseStringArray(raw: string): string[] {
 }
 
 function promptFor(task: Task, text: string, question: string): string {
-  const src = `Source text:\n"""\n${text.slice(0, 8000)}\n"""`;
+  const src = `Source text:\n"""\n${text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (task) {
     case "summary":
       return `Summarize the following in 2–4 sentences, plainly, no preamble.\n\n${src}`;
@@ -129,34 +136,16 @@ function parseFor(task: Task, raw: string, text: string): unknown {
   }
 }
 
-export async function POST(request: Request) {
-  let task: Task = "beliefs";
-  let text = "";
-  let question = "";
+async function callAnthropic(
+  key: string,
+  task: Task,
+  text: string,
+  question: string,
+): Promise<unknown> {
+  const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const body = (await request.json()) as {
-      task?: Task;
-      text?: string;
-      question?: string;
-    };
-    task = body.task ?? "beliefs";
-    text = (body.text ?? "").trim();
-    question = (body.question ?? "").trim();
-  } catch {
-    return NextResponse.json({ result: mockFor("beliefs", "", ""), source: "mock" });
-  }
-
-  if (!text) {
-    return NextResponse.json({ result: mockFor(task, "", question), source: "mock" });
-  }
-
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    return NextResponse.json({ result: mockFor(task, text, question), source: "mock" });
-  }
-
-  try {
-    const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -169,11 +158,63 @@ export async function POST(request: Request) {
         max_tokens: 1024,
         messages: [{ role: "user", content: promptFor(task, text, question) }],
       }),
+      signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`anthropic ${res.status}`);
+    if (!res.ok) throw new Error(`anthropic_${res.status}`);
     const data = (await res.json()) as AnthropicResponse;
-    return NextResponse.json({ result: parseFor(task, rawText(data), text), source: "ai" });
+    return parseFor(task, rawText(data), text); // may throw on invalid output
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function POST(request: Request) {
+  // --- request validation ---
+  let task: Task;
+  let text: string;
+  let question: string;
+  try {
+    const body = (await request.json()) as {
+      task?: unknown;
+      text?: unknown;
+      question?: unknown;
+    };
+    const t = typeof body.task === "string" ? (body.task as Task) : "beliefs";
+    if (!ALLOWED_TASKS.has(t)) {
+      return NextResponse.json({ error: "invalid task" }, { status: 400 });
+    }
+    task = t;
+    text = (typeof body.text === "string" ? body.text : "").slice(0, MAX_INPUT_CHARS).trim();
+    question = (typeof body.question === "string" ? body.question : "")
+      .slice(0, 2_000)
+      .trim();
   } catch {
+    return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
+  }
+
+  // Empty input → deterministic mock (never an error; keeps the UI flowing).
+  if (!text) {
+    return NextResponse.json({ result: mockFor(task, "", question), source: "mock" });
+  }
+
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) {
+    // No key configured → mock. In production this is surfaced via source:"mock".
     return NextResponse.json({ result: mockFor(task, text, question), source: "mock" });
+  }
+
+  try {
+    const result = await callAnthropic(key, task, text, question);
+    return NextResponse.json({ result, source: "ai" });
+  } catch (e) {
+    // Log the failure reason ONLY — never the source text.
+    const reason = e instanceof Error ? e.message : "unknown";
+    console.error(`[ai] task=${task} failed: ${reason}; serving mock`);
+    // Degrade to mock so the product keeps working; clearly marked mock.
+    return NextResponse.json({
+      result: mockFor(task, text, question),
+      source: "mock",
+      degraded: true,
+    });
   }
 }

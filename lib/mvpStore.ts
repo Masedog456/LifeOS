@@ -20,7 +20,7 @@ import type {
   StoreState,
 } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
-import { clearState, loadState, saveState } from "@/lib/persistence";
+import { clearState, loadState, saveLocalOnly, saveState } from "@/lib/persistence";
 
 /** Stable empty state — used for the server snapshot and pre-hydration client render. */
 const EMPTY_STATE: StoreState = {
@@ -97,10 +97,21 @@ export function hydrate() {
   }
 }
 
-/** Wipe all local prototype data. For the local trial only. */
+/** Wipe all data (local + remote, if configured). */
 export function resetStore() {
   clearState();
   setState({ captures: [], proposals: [], beliefs: [], sources: [] });
+}
+
+/**
+ * Replace the in-memory store with adopted remote data. Persists locally
+ * only (no remote re-push) and notifies subscribers. Used by the
+ * persistence bootstrap after loading from Supabase.
+ */
+export function replaceState(next: StoreState) {
+  state = next;
+  saveLocalOnly(next);
+  emit();
 }
 
 // ---------- Subscription plumbing ----------

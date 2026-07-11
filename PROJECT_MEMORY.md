@@ -24,7 +24,26 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-10
-- **LIFEOS-003 — Knowledge Engine MVP: implemented (this pass).** Added a
+- **LIFEOS-004 — Durable persistence + real AI: implemented (this pass;
+  Supabase path unverified pending credentials).** Added a Supabase schema
+  (`supabase/migrations/0001_initial_schema.sql`: sources, captures,
+  proposals, beliefs, belief_revisions, user_judgments, saved_quotes; UUID
+  PKs; per-row `user_id`; RLS own-rows-only; append-only
+  revisions/judgments/quotes; immutability triggers on original/capture
+  text). Introduced a persistence **adapter** boundary (`lib/adapters/*`:
+  `LocalPersistenceAdapter`, `SupabasePersistenceAdapter`) behind
+  `lib/persistence.ts`, which keeps the store's instant local write and
+  layers a debounced remote sync, one-time local→remote migration (never
+  deletes local), and a "Saved locally / Syncing / Synced / Sync failed"
+  indicator (`components/SyncStatus.tsx`) with Retry. Anonymous Supabase
+  auth for the single-user MVP. Hardened the single `/api/ai` route
+  (task/JSON validation → 400, 30s timeout, mock-degrade with `degraded`
+  flag, no source-text logging, server-only key). **Local mode remains the
+  default and is fully verified (9/9 flow + refresh persistence + sync
+  label + AI 400s); Supabase/real-AI paths need the human to add
+  credentials and run the migration — see `PERSISTENCE_QA.md`.** No new
+  product features; UX unchanged.
+- **LIFEOS-003 — Knowledge Engine MVP: implemented.** Added a
   Knowledge Library subsystem alongside (not replacing) the Belief Ledger.
   New screens: Library (`app/library/page.tsx` — browse/search/filter,
   add source) and Reader (`app/library/[id]/page.tsx` — read, highlight→
@@ -445,3 +464,34 @@ scope or order.
   `build` green. Still localStorage-only — no Supabase, auth, or deploy.
   Known deferral: automatic PDF/URL text extraction (a later ingestion
   adapter); today those inputs prompt for the text in the reader.
+- 2026-07-10 — Implemented **LIFEOS-004 durable persistence + real AI**.
+  Added `@supabase/supabase-js`; `supabase/migrations/0001_initial_schema.sql`
+  (7 tables, UUID PKs, per-row `user_id`, RLS restricting each user to
+  their own rows, append-only `belief_revisions`/`user_judgments`/
+  `saved_quotes` via insert-only policies, and BEFORE-UPDATE triggers
+  making `original_text` and capture `text` immutable). New code:
+  `lib/supabase.ts` (client factory — null in local mode, throws only on
+  half-configuration; reads only the two public vars), `lib/adapters/types.ts`
+  (PersistenceAdapter interface), `lib/adapters/localAdapter.ts`,
+  `lib/adapters/supabaseAdapter.ts` (relational row mapping;
+  insert-or-ignore for append-only tables). Rewrote `lib/persistence.ts`
+  as a facade: synchronous local write first, debounced remote sync
+  second, sync-status observable, `retrySync`, and `initRemote` (anonymous
+  sign-in + one-time local→remote migration keyed by user id that never
+  deletes local data and prevents duplicate imports). Store gained
+  `replaceState` (adopt remote without a re-push loop). New components
+  `SyncStatus` (in Nav) and `PersistenceBootstrap` (in layout). Hardened
+  `app/api/ai/route.ts`: validates task (400) and JSON (400), caps input,
+  30s AbortController timeout, logs only failure reasons (never source
+  text), and degrades to mock with a `degraded:true` flag so production
+  clearly shows when mock is used. Updated `.env.example` (added
+  `ANTHROPIC_MODEL`, clarified public vs server-only). Added
+  `PERSISTENCE_QA.md` with the exact Supabase/Vercel manual steps and both
+  checklists. Verified LOCAL mode end-to-end (9/9 flow, refresh
+  persistence, "Saved locally" indicator, AI 400 validation, mock
+  fallback) with lint+build green; confirmed the Anthropic key value is
+  never in the client bundle (only the identifier appears inside a
+  user-facing mock hint string). The Supabase and real-Anthropic paths are
+  code-complete but UNVERIFIED here — no credentials were available; they
+  activate automatically once the human adds env vars and runs the
+  migration. No product features added; UX unchanged.

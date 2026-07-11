@@ -1,0 +1,46 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
+import { getHealth, retrySync, subscribeHealth } from "@/lib/persistence";
+import type { PersistenceHealth } from "@/lib/adapters/types";
+
+const SERVER_SNAPSHOT: PersistenceHealth = { mode: "local", state: "disabled" };
+
+function useHealth(): PersistenceHealth {
+  return useSyncExternalStore(subscribeHealth, getHealth, () => SERVER_SNAPSHOT);
+}
+
+const DOT: Record<PersistenceHealth["state"], string> = {
+  local: "bg-zinc-400",
+  disabled: "bg-zinc-400",
+  syncing: "bg-amber-500",
+  synced: "bg-emerald-500",
+  failed: "bg-red-500",
+};
+
+const LABEL: Record<PersistenceHealth["state"], string> = {
+  local: "Saved locally",
+  disabled: "Saved locally",
+  syncing: "Syncing…",
+  synced: "Synced",
+  failed: "Sync failed",
+};
+
+export default function SyncStatus() {
+  const h = useHealth();
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-zinc-400" title={h.error ?? undefined}>
+      <span className={`h-2 w-2 rounded-full ${DOT[h.state]}`} />
+      {LABEL[h.state]}
+      {h.state === "failed" && (
+        <button
+          type="button"
+          onClick={() => void retrySync()}
+          className="underline underline-offset-2 hover:text-zinc-600 dark:hover:text-zinc-300"
+        >
+          Retry
+        </button>
+      )}
+    </span>
+  );
+}

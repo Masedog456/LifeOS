@@ -47,6 +47,8 @@ npm run lint    # lint check
   ruthless six-week feature prioritization (design only — nothing built)
 - [QA_CHECKLIST.md](./QA_CHECKLIST.md) — manual QA steps for the
   implemented Belief Thread MVP local trial
+- [PERSISTENCE_QA.md](./PERSISTENCE_QA.md) — Supabase/Vercel setup steps
+  and QA for durable persistence + real AI (LIFEOS-004)
 - [TRIAL_GUIDE.md](./TRIAL_GUIDE.md) — how to use the local prototype for
   the two-week personal trial, and how to judge whether it's valuable
 
