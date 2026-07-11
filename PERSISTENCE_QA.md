@@ -46,6 +46,28 @@ Variables**. `NEXT_PUBLIC_*` are exposed to the browser (safe);
 prefix them with `NEXT_PUBLIC_`. Never paste the Supabase **service-role**
 key anywhere in this project.
 
+> **Build-time gotcha:** `NEXT_PUBLIC_*` values are inlined into the client
+> bundle **at build time**. They must be present in Vercel's env for the
+> environment being built (Production and/or Preview) **before** the build
+> runs, or the browser will see them as undefined and stay in local-only
+> mode. After adding/changing them, trigger a fresh deployment.
+
+### 4. Deployment branch (LIFEOS-005)
+All LifeOS work to date is on `claude/lifeos-implementation-xwrikz`. Vercel
+builds its **Production** environment from the project's **Production
+Branch** (default: `main`). Choose one:
+- **Recommended:** merge this branch into `main` and let Vercel deploy
+  Production from `main`. Pushes to the feature branch then produce Preview
+  deployments (using Preview-scoped env vars).
+- **Or:** set **Vercel → Settings → Git → Production Branch** to
+  `claude/lifeos-implementation-xwrikz`.
+
+Vercel auto-detects **Next.js** — no `vercel.json` is needed. Defaults are
+correct: Framework = Next.js, Build = `next build`, Install = `npm install`,
+Output = `.next`. The app builds cleanly with **no** env vars set (it falls
+back to local mode), so a misconfigured env never breaks the build — it only
+changes runtime behavior.
+
 ---
 
 ## A. Local mode (verified — no credentials needed)
@@ -61,6 +83,9 @@ key anywhere in this project.
 - [x] `/api/ai` invalid task → HTTP 400; invalid JSON → HTTP 400.
 - [x] `/api/ai` with no key → deterministic mock (`"source":"mock"`).
 - [x] `npm run lint` = 0, `npm run build` = 0.
+- [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
+      `/constitution`, and `/api/ai` (verifies no local-only assumption
+      breaks a production server — the same runtime Vercel uses).
 - [x] No secret **value** in the client bundle (only the identifier string
       "ANTHROPIC_API_KEY" inside a user-facing mock hint — not the key).
 
@@ -95,20 +120,57 @@ key anywhere in this project.
       that already held another account's data, that data is **not** pushed
       into the new account (it stays in its owner's account).
 
-## C. Real Anthropic (run after key is set)
+## C. Real Anthropic (CREDENTIAL-DEPENDENT, pending)
 
-- [ ] Add a source → summary/quotes/concepts/beliefs come back with
-      `"source":"ai"` (not `"mock"`).
-- [ ] Ask a question in the reader → a real answer (not the mock hint).
+Verify each task returns `"source":"ai"` (real) rather than `"mock"`:
+```bash
+for t in summary quotes concepts beliefs; do
+  curl -s -X POST https://<prod-url>/api/ai -H "content-type: application/json" \
+    -d "{\"task\":\"$t\",\"text\":\"Attention is the beginning of devotion.\"}" ; echo
+done
+```
+- [ ] All four tasks (and a reader question) return `"source":"ai"`.
 - [ ] Quote spans still resolve (candidate beliefs highlight correctly).
-- [ ] Kill network / use a bad key → route degrades to mock
-      (`"source":"mock"`, `"degraded":true`); the app keeps working.
+- [ ] Bad key / network fault → response is `"source":"mock","degraded":true`;
+      the app keeps working (never a hard error to the user).
+
+**Distinguishing real vs mock**: the JSON response `source` field is `"ai"`
+for real Anthropic output and `"mock"` otherwise; a failed real attempt also
+includes `"degraded":true`. In the UI, a source processed with real AI drops
+the small "mock" tag.
+
+**Diagnosing a failed real call** — check the Vercel function logs for
+`[ai] task=… failed: <reason>` (source text and keys are never logged):
+
+| Log reason        | Likely cause                                   |
+|-------------------|------------------------------------------------|
+| `anthropic_401`   | missing/invalid/expired `ANTHROPIC_API_KEY`    |
+| `anthropic_400`   | malformed request / bad model params           |
+| `anthropic_404`   | unsupported/misspelled `ANTHROPIC_MODEL`       |
+| `anthropic_429`   | rate limited or **insufficient credits**       |
+| `anthropic_5xx`   | Anthropic upstream issue                        |
+| `The operation was aborted` | timeout (>25s) — rare; or Vercel runtime |
+| `no JSON in response` / `empty proposals` | model output didn't parse |
+
+If `source` is always `"mock"` even with a key set: the key isn't reaching
+the server env (not set for that Vercel environment, or `NEXT_PUBLIC_`-
+prefixed by mistake, or set only on Preview while testing Production).
 
 ## D. Failure resilience
 
 - [ ] Simulate remote failure (wrong URL, or offline): writes still succeed
       locally ("Saved locally"/"Sync failed" with a **Retry** action);
       nothing is lost. Fix connectivity → **Retry** re-syncs.
+
+## E. Full production chain (CREDENTIAL-DEPENDENT, pending)
+
+Run against the live URL, signed in by email:
+1. [ ] Open the live URL. 2. [ ] Sign in by email (magic link).
+3. [ ] Add a manual text source. 4. [ ] Run analysis (real AI).
+5. [ ] Save a quote. 6. [ ] Send a belief candidate to the Inbox.
+7. [ ] Rewrite/accept it. 8. [ ] It appears in the Constitution.
+9. [ ] Refresh → all data remains. 10. [ ] Second browser, same email →
+same data loads. 11. [ ] Ask a Reader question → real Anthropic answer.
 
 ---
 

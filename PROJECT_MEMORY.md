@@ -24,8 +24,27 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-10
-- **LIFEOS-004.1 — Durable email identity: implemented (this pass; auth/
-  remote paths unverified pending credentials).** Replaced anonymous-only
+- **LIFEOS-005 — Production deployment prep + verification: done for
+  everything possible without live access; live checks PENDING.** Verified
+  the repo is Vercel-ready: env usage is exactly the three expected vars
+  (+ optional `ANTHROPIC_MODEL`), standard Next scripts, Next.js
+  auto-detected (no `vercel.json` needed), and the app builds AND serves in
+  production mode (`next start`) with no env set (local fallback) — so a
+  misconfigured env never breaks the build. One minimal production-compat
+  fix: the `/api/ai` route now sets `maxDuration = 30` + `runtime =
+  "nodejs"` and lowers its internal abort to 25s, so a slow Anthropic call
+  degrades to mock before Vercel's function timeout kills it. Confirmed no
+  service-role usage, no secrets in tracked files, no secret values in the
+  client bundle. Documented (in `PERSISTENCE_QA.md`): the deployment-branch
+  decision (merge to `main` or set Vercel Production Branch — current work
+  is on `claude/lifeos-implementation-xwrikz`), the `NEXT_PUBLIC_*`
+  build-time inlining gotcha, the full live QA chain, and an Anthropic
+  failure→cause diagnosis table (401 key / 404 model / 429 credits / etc.).
+  **I cannot access the live URL, Supabase, or the Anthropic key from here,
+  so all Supabase-auth, real-AI, and cross-browser live checks remain
+  PENDING human verification — none are claimed passed.**
+- **LIFEOS-004.1 — Durable email identity: implemented (auth/remote paths
+  unverified pending credentials).** Replaced anonymous-only
   identity with **email magic-link** sign-in (`signInWithOtp`). Remote sync
   now activates ONLY for a durable, email-verified session — never for
   anonymous or signed-out states, so no private data leaves the browser
@@ -538,3 +557,24 @@ scope or order.
   flow, zero runtime errors) with `lint`/`build` green and no secret values
   in the client bundle. Auth, remote sync, and cross-device are
   credential-dependent and remain PENDING human verification.
+- 2026-07-10 — **LIFEOS-005 production verification.** Inspected all
+  deployment-relevant config: env usage is exactly
+  `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+  `ANTHROPIC_API_KEY` (+ optional `ANTHROPIC_MODEL`); public Supabase vars
+  are client-safe, the Anthropic key is server-only (only in
+  `app/api/ai/route.ts`), no service-role key anywhere, no `.env*` tracked.
+  Minimal production-compat code change: added `export const maxDuration =
+  30` and `export const runtime = "nodejs"` to `app/api/ai/route.ts` and
+  reduced `REQUEST_TIMEOUT_MS` 30s→25s so the graceful mock fallback fires
+  before Vercel's serverless timeout. Verified `npm run lint`=0, `npm run
+  build`=0, AND that the production server (`next start`) serves all pages
+  and `/api/ai` (mock path) — confirming no local-only assumption breaks a
+  production runtime. Documented the deployment branch decision (work is on
+  `claude/lifeos-implementation-xwrikz`; Vercel Production deploys from the
+  Production Branch, default `main` — merge or reconfigure), the
+  `NEXT_PUBLIC_*` build-time inlining requirement, the full production QA
+  chain, and an Anthropic failure-diagnosis table, all in
+  `PERSISTENCE_QA.md`. Live Supabase-auth, real-Anthropic, and
+  cross-browser checks are credential/deploy-dependent and were NOT
+  performed here — they remain PENDING and are unclaimed. No product
+  features, UI, or ontology changes.

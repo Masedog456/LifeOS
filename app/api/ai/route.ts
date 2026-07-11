@@ -19,6 +19,12 @@ import { NextResponse } from "next/server";
 import { mockProposals, type ProposalDraft } from "@/lib/proposals";
 import { mockAnswer, mockConcepts, mockQuotes, mockSummary } from "@/lib/mockAI";
 
+// Allow the serverless function up to 30s on Vercel (default is 10s). Our
+// own abort timeout below is kept safely under this so the graceful
+// mock-fallback path always runs before the platform kills the function.
+export const maxDuration = 30;
+export const runtime = "nodejs";
+
 type Task = "beliefs" | "summary" | "quotes" | "concepts" | "question";
 
 const ALLOWED_TASKS = new Set<Task>(["beliefs", "summary", "quotes", "concepts", "question"]);
@@ -26,7 +32,8 @@ const ALLOWED_TASKS = new Set<Task>(["beliefs", "summary", "quotes", "concepts",
 const MAX_INPUT_CHARS = 50_000;
 /** How much of the input the model actually sees (spans still resolve against full text). */
 const MAX_MODEL_CHARS = 12_000;
-const REQUEST_TIMEOUT_MS = 30_000;
+/** Under maxDuration (30s) so our try/catch degrades to mock before Vercel times out. */
+const REQUEST_TIMEOUT_MS = 25_000;
 
 interface AnthropicTextBlock {
   type: string;
