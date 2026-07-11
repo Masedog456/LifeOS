@@ -7,13 +7,29 @@
 
 ## Manual setup (do this once, in order)
 
-### 1. Supabase
+### 1. Supabase database
 1. In your `lifeos` Supabase project, open **SQL Editor** and run
    `supabase/migrations/0001_initial_schema.sql` (paste and execute).
-2. **Authentication → Providers → Anonymous**: enable "Allow anonymous
-   sign-ins". (Email auth also works and needs no code change.)
-3. **Project Settings → API**: copy the **Project URL** and the **anon
-   public** key.
+2. **Project Settings → API**: copy the **Project URL** and the **anon
+   public** key. (Never copy the **service-role** key into this project.)
+
+### 1b. Supabase authentication (email magic link)
+LifeOS signs in with a durable **email** identity — remote sync only starts
+after a permanent account exists. Configure:
+
+1. **Authentication → Providers → Email**: enabled (on by default). The
+   default "Magic Link" flow is what LifeOS uses (`signInWithOtp`). No
+   password is required.
+2. **Authentication → Providers → Anonymous**: **leave DISABLED.** LifeOS
+   deliberately does not use anonymous auth for sync — pre-sign-in usage is
+   local-only. Enabling it is unnecessary and not recommended.
+3. **Authentication → URL Configuration**:
+   - **Site URL**: your production URL (e.g. `https://lifeos.vercel.app`).
+   - **Redirect URLs** (add both): `http://localhost:3000/**` and
+     `https://<your-vercel-domain>/**`. The magic link redirects back to the
+     app's origin; these must be allowlisted or sign-in will fail.
+4. (Optional) **Authentication → Email Templates → Magic Link**: customize
+   wording. The default works.
 
 ### 2. Local `.env.local` (never committed)
 ```
@@ -48,25 +64,36 @@ key anywhere in this project.
 - [x] No secret **value** in the client bundle (only the identifier string
       "ANTHROPIC_API_KEY" inside a user-facing mock hint — not the key).
 
-## B. Supabase mode (run after setup above)
+## B. Authentication + sync (run after setup — CREDENTIAL-DEPENDENT, pending)
 
-- [ ] With env set, load the app: indicator goes **Syncing… → Synced**.
-- [ ] Existing local data is **migrated once** to Supabase on first load
-      (check the `beliefs`/`sources` tables in Supabase). Local data is
-      **not** deleted.
-- [ ] Reloading does not duplicate rows (migration is one-time, upserts are
-      idempotent).
-- [ ] Add a source / accept a belief → row appears in Supabase; indicator
-      shows **Synced**.
-- [ ] Open the app in a **second browser** (same login path): the same data
-      loads from Supabase.
-- [ ] Belief revisions and judgments are **append-only** in
-      `belief_revisions` / `user_judgments` (no rows are updated/deleted;
-      new `seq` rows are added).
+- [ ] Configured but **signed out** → indicator shows **"Saved locally"**,
+      a **"Sign in"** control appears, and NOTHING syncs remotely yet
+      (Supabase tables stay empty).
+- [ ] Click **Sign in**, enter email → "Check your email" → click the magic
+      link → you return signed in; the email shows in the nav.
+- [ ] On first sign-in, existing local data **migrates once** to your
+      account (rows appear in `sources`/`beliefs`), and local data is **not**
+      deleted. Indicator goes **Syncing… → Synced**.
+- [ ] Reload → no duplicate rows (migration is one-time; upserts idempotent).
+- [ ] Add a source / accept a belief while signed in → row appears in
+      Supabase; indicator shows **Synced**.
+- [ ] **Sign out** → back to local-only ("Saved locally"); local data
+      remains usable.
+- [ ] Belief revisions/judgments are **append-only** in `belief_revisions` /
+      `user_judgments` (new `seq` rows only; none updated/deleted).
 - [ ] `original_text`, capture `text`, and `saved_quotes.text` cannot be
       overwritten (DB triggers / append-only RLS reject it).
-- [ ] Row-level security: a second user cannot read the first user's rows
-      (test with two anonymous sessions if desired).
+- [ ] Row-level security: a second account cannot read the first's rows.
+
+## B2. Cross-device (CREDENTIAL-DEPENDENT, pending)
+
+- [ ] Browser A: sign in, create a source and a belief.
+- [ ] Browser B (or another device): sign in with the **same email**.
+- [ ] Browser B loads the same Library, Inbox, Constitution, quotes,
+      revisions, and judgments.
+- [ ] No wrong-user migration: if a different email signs in on a browser
+      that already held another account's data, that data is **not** pushed
+      into the new account (it stays in its owner's account).
 
 ## C. Real Anthropic (run after key is set)
 
@@ -86,10 +113,14 @@ key anywhere in this project.
 ---
 
 ## Known limitations
-- Supabase mode is code-complete but **unverified in this environment**
-  (no credentials were available); local mode is fully verified.
+- Supabase + email-auth mode is code-complete but **unverified in this
+  environment** (no credentials were available); local mode is fully
+  verified.
 - Sync is whole-state debounced upsert (fine for single-user volume), not
   real-time collaboration.
-- Anonymous auth ties data to the browser's anonymous identity; clearing
-  the browser's Supabase session starts a new anonymous user. For durable
-  cross-device identity, enable email auth (no code change required).
+- Identity is **email magic link only** (durable, cross-device). Anonymous
+  auth is intentionally not used for sync; pre-sign-in usage is local-only.
+- If you edit data locally while signed out on a device whose account
+  already has remote data, then sign in, the remote copy is adopted as the
+  source of truth (those particular offline edits are not merged). Append-
+  only history is never lost. Sign in before editing to avoid this.

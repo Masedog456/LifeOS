@@ -24,8 +24,24 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-10
-- **LIFEOS-004 — Durable persistence + real AI: implemented (this pass;
-  Supabase path unverified pending credentials).** Added a Supabase schema
+- **LIFEOS-004.1 — Durable email identity: implemented (this pass; auth/
+  remote paths unverified pending credentials).** Replaced anonymous-only
+  identity with **email magic-link** sign-in (`signInWithOtp`). Remote sync
+  now activates ONLY for a durable, email-verified session — never for
+  anonymous or signed-out states, so no private data leaves the browser
+  before a permanent account exists. Added `lib/authStore.ts` (reactive auth
+  UI state + sign-in/out), `components/AuthControl.tsx` (minimal nav sign-in
+  form / signed-in email + sign-out). The persistence facade now drives
+  remote enable/disable from `onAuthStateChange`, with a wrong-user-safe,
+  idempotent migration (adopt remote if it has data; migrate local up only
+  if local is unowned or already this user's; never migrate another
+  account's local data). Anonymous auth fully removed. Local-only mode
+  remains the pre-sign-in default and is fully verified (no Sign-in button
+  when unconfigured, "Saved locally", full flow, no runtime errors); auth +
+  cross-device paths are credential-dependent and pending. `lint`/`build`
+  green; no secret values in the client bundle.
+- **LIFEOS-004 — Durable persistence + real AI: implemented (Supabase path
+  unverified pending credentials).** Added a Supabase schema
   (`supabase/migrations/0001_initial_schema.sql`: sources, captures,
   proposals, beliefs, belief_revisions, user_judgments, saved_quotes; UUID
   PKs; per-row `user_id`; RLS own-rows-only; append-only
@@ -495,3 +511,30 @@ scope or order.
   code-complete but UNVERIFIED here — no credentials were available; they
   activate automatically once the human adds env vars and runs the
   migration. No product features added; UX unchanged.
+- 2026-07-10 — Implemented **LIFEOS-004.1 durable email account
+  authentication**. Chose email magic link (`signInWithOtp`) as the sole
+  remote identity and REMOVED anonymous auth entirely — remote sync is
+  gated on a permanent, email-verified session, satisfying "do not sync
+  private data until a durable identity exists." New files:
+  `lib/authStore.ts` (reactive auth state: configured/loading/email/phase,
+  plus `signInWithEmail`/`signOut`), `components/AuthControl.tsx` (calm nav
+  sign-in popover with loading/sent/error states; shows email + Sign out
+  when signed in; renders nothing when Supabase is unconfigured). Rewrote
+  the persistence facade's init: `initPersistence` sets up
+  `onAuthStateChange`; `handleSession` enables a SupabaseAdapter only when a
+  session exists (else remote=null, local-only) and reflects state into the
+  auth store and sync health; `migrateOrAdopt` is idempotent and
+  wrong-user-safe (remote-has-data → adopt; remote-empty + local unowned or
+  ours → migrate up; remote-empty + local belongs to another account →
+  start clean, never cross-migrate). `PersistenceBootstrap` now calls
+  `initPersistence`. Duplicate prevention: id-keyed upserts (sources/
+  beliefs), insert-or-ignore on `(belief_id, seq)` (revisions/judgments)
+  and `(source_id, text)` (quotes), and a `migratedFor` user-id marker.
+  Set `emailRedirectTo = window.location.origin`; sign-in is user-initiated
+  so there is no redirect loop. Updated `.env.example`, `PERSISTENCE_QA.md`
+  (email/Site-URL/redirect-URL dashboard steps; anonymous stays disabled;
+  auth + cross-device marked credential-pending), and `README.md`. Verified
+  LOCAL/unconfigured mode (no Sign-in button, "Saved locally", full 9/9
+  flow, zero runtime errors) with `lint`/`build` green and no secret values
+  in the client bundle. Auth, remote sync, and cross-device are
+  credential-dependent and remain PENDING human verification.

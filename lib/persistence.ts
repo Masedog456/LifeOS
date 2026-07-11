@@ -11,10 +11,12 @@
  * exposed as a small observable for an unobtrusive indicator.
  */
 
+import type { Session } from "@supabase/supabase-js";
 import type { StoreState } from "@/types/mvp";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
 import { SupabasePersistenceAdapter } from "@/lib/adapters/supabaseAdapter";
 import type { PersistenceHealth } from "@/lib/adapters/types";
+import * as authStore from "@/lib/authStore";
 
 const STORAGE_KEY = "lifeos.mvp.v1";
 const MIGRATED_KEY = "lifeos.migrated.v1";
@@ -141,60 +143,112 @@ export async function retrySync(): Promise<void> {
   await flush();
 }
 
-// ---------------- init + first-run migration ----------------
+// ---------------- init + auth-driven remote enable/disable ----------------
+
+let listenerSet = false;
 
 /**
- * Called once client-side after local hydration. Ensures auth, then either
- * adopts existing remote data or performs a one-time migration of local
- * data upward. Never deletes local data. `replaceState` swaps the in-memory
- * store to adopted remote data.
+ * Called once client-side after local hydration. Configures the auth
+ * listener (email identity only). Remote sync is enabled ONLY when a
+ * durable, email-verified session exists — never for anonymous or
+ * signed-out states. `replaceState` swaps the in-memory store to adopted
+ * remote data.
  */
-export async function initRemote(replaceState: (s: StoreState) => void): Promise<void> {
+export async function initPersistence(
+  replaceState: (s: StoreState) => void,
+): Promise<void> {
   if (!isSupabaseConfigured()) {
+    authStore.setUnconfigured();
     setHealth({ mode: "local", state: "disabled" });
     return;
   }
   const client = getSupabaseClient();
   if (!client) {
+    authStore.setUnconfigured();
+    setHealth({ mode: "local", state: "disabled" });
+    return;
+  }
+  authStore.setConfigured();
+
+  if (listenerSet) return;
+  listenerSet = true;
+  // Fires INITIAL_SESSION immediately, then on every sign-in/out.
+  client.auth.onAuthStateChange((_event, session) => {
+    void handleSession(session, replaceState);
+  });
+}
+
+async function handleSession(
+  session: Session | null,
+  replaceState: (s: StoreState) => void,
+): Promise<void> {
+  authStore.applySession(session);
+
+  if (!session) {
+    // Signed out (or never signed in): local-only. Keep local data.
+    remote = null;
     setHealth({ mode: "local", state: "disabled" });
     return;
   }
 
+  const client = getSupabaseClient();
+  if (!client) return;
+  remote = new SupabasePersistenceAdapter(client);
   setHealth({ mode: "supabase", state: "syncing" });
   try {
-    let {
-      data: { session },
-    } = await client.auth.getSession();
-    if (!session) {
-      const { error } = await client.auth.signInAnonymously();
-      if (error) throw error;
-      ({
-        data: { session },
-      } = await client.auth.getSession());
-    }
-    if (!session) throw new Error("no authenticated session");
-
-    remote = new SupabasePersistenceAdapter(client);
-    const userId = session.user.id;
-
-    const remoteState = await remote.loadState();
-    const local = loadState();
-    const migratedFor =
-      typeof window !== "undefined" ? window.localStorage.getItem(MIGRATED_KEY) : null;
-
-    if (hasData(remoteState)) {
-      // Remote is the source of truth once it has data.
-      replaceState(normalize(remoteState));
-    } else if (hasData(local) && migratedFor !== userId) {
-      // One-time upward migration; keep local data intact until confirmed.
-      await remote.saveState(normalize(local));
-      if (typeof window !== "undefined") window.localStorage.setItem(MIGRATED_KEY, userId);
-    }
+    await migrateOrAdopt(session.user.id, replaceState);
     setHealth({ state: "synced", error: undefined });
   } catch (e) {
-    // Remote unavailable → stay in local mode; nothing is lost.
-    remote = null;
-    setHealth({ mode: "supabase", state: "failed", error: msg(e) });
+    setHealth({ state: "failed", error: msg(e) });
+  }
+}
+
+/**
+ * Idempotent, wrong-user-safe reconciliation between local and remote:
+ *  - remote has data              → adopt remote (source of truth)
+ *  - remote empty, local unowned  → migrate local up (this user owns it now)
+ *  - remote empty, local is ours  → re-push local (idempotent)
+ *  - remote empty, local is someone else's → do NOT migrate; start clean for
+ *    this user (their data is elsewhere; nothing is deleted from remote)
+ */
+async function migrateOrAdopt(
+  userId: string,
+  replaceState: (s: StoreState) => void,
+): Promise<void> {
+  if (!remote) return;
+  const remoteState = await remote.loadState();
+  const local = loadState();
+  const migratedFor = readMigratedFor();
+
+  if (hasData(remoteState)) {
+    replaceState(normalize(remoteState));
+    writeMigratedFor(userId);
+    return;
+  }
+  if (!migratedFor || migratedFor === userId) {
+    if (hasData(local)) await remote.saveState(normalize(local));
+    writeMigratedFor(userId);
+    return;
+  }
+  // Local data belongs to a different account — never migrate it into this one.
+  replaceState(normalize(null));
+  writeMigratedFor(userId);
+}
+
+function readMigratedFor(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(MIGRATED_KEY);
+  } catch {
+    return null;
+  }
+}
+function writeMigratedFor(userId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(MIGRATED_KEY, userId);
+  } catch {
+    // no-op
   }
 }
 

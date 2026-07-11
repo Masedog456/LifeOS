@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { pendingProposals, useStore } from "@/lib/mvpStore";
 import SyncStatus from "@/components/SyncStatus";
+import AuthControl from "@/components/AuthControl";
 
 const LINKS = [
   { href: "/", label: "Capture" },
@@ -51,6 +52,9 @@ export default function Nav() {
               </Link>
             );
           })}
+          <div className="ml-1">
+            <AuthControl />
+          </div>
         </div>
       </div>
     </nav>
