@@ -41,6 +41,9 @@ export async function ingest(request: IngestionRequest): Promise<string> {
     origin: result.origin,
     originalText: result.text,
     processingState: result.needsText ? "needs_text" : "captured",
+    pdfMeta: result.pdfMeta,
+    pageMap: result.pageMap,
+    extractionStatus: result.extractionStatus,
   });
 
   if (!result.needsText && result.text.trim()) {

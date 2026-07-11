@@ -13,7 +13,13 @@
  * same way — see INGESTION.md.
  */
 
-import type { SourceInput, SourceType } from "@/types/mvp";
+import type {
+  ExtractionStatus,
+  PageSpan,
+  PdfMeta,
+  SourceInput,
+  SourceType,
+} from "@/types/mvp";
 
 export type IngestionKind = "text" | "pdf" | "url";
 
@@ -62,6 +68,10 @@ export interface IngestionResult {
   needsText: boolean;
   /** Human-facing note explaining a fallback, shown in the reader. */
   note?: string;
+  // ---- PDF provenance (LIFEOS-008) ----
+  pdfMeta?: PdfMeta;
+  pageMap?: PageSpan[];
+  extractionStatus?: ExtractionStatus;
 }
 
 export interface IngestionAdapter<R extends IngestionRequest = IngestionRequest> {

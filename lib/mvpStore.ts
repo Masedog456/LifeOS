@@ -307,7 +307,17 @@ export function resurfacedBelief(s: StoreState): Belief | undefined {
 /** Add a source to the library. Returns its id. Original text is immutable hereafter. */
 export function addSource(
   fields: Pick<KnowledgeSource, "type" | "input" | "title" | "originalText"> &
-    Partial<Pick<KnowledgeSource, "author" | "origin" | "processingState">>,
+    Partial<
+      Pick<
+        KnowledgeSource,
+        | "author"
+        | "origin"
+        | "processingState"
+        | "pdfMeta"
+        | "pageMap"
+        | "extractionStatus"
+      >
+    >,
 ): string {
   const source: KnowledgeSource = {
     id: id(),
@@ -327,6 +337,9 @@ export function addSource(
     chunkResults: [],
     stages: emptyStages(),
     analysis: emptyAnalysis(),
+    pdfMeta: fields.pdfMeta,
+    pageMap: fields.pageMap,
+    extractionStatus: fields.extractionStatus,
   };
   setState({ ...state, sources: [source, ...state.sources] });
   return source.id;

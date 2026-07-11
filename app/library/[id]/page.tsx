@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   beliefsFromSource,
+  patchSource,
   saveQuote,
   sendToInbox,
   setOriginalText,
@@ -13,9 +14,17 @@ import {
   useStore,
 } from "@/lib/mvpStore";
 import { analyzeSource, cancelAnalysis, estimateCalls, runStage } from "@/lib/pipeline";
+import { extractPdf } from "@/lib/ingestion/pdfExtract";
 import { askQuestion, generateBeliefs } from "@/lib/aiClient";
 import { PROCESSING_LABELS, SOURCE_TYPE_LABELS, isProcessing } from "@/lib/labels";
-import type { KnowledgeSource, StageName } from "@/types/mvp";
+import type { ExtractionStatus, KnowledgeSource, StageName } from "@/types/mvp";
+
+const EXTRACTION_LABELS: Record<ExtractionStatus, string> = {
+  text_extracted: "Text extracted",
+  partial_text: "Partial text extracted",
+  scanned_ocr_required: "Scanned PDF — OCR required",
+  extraction_failed: "Extraction failed",
+};
 
 export default function ReaderPage() {
   const params = useParams<{ id: string }>();
@@ -90,6 +99,41 @@ export default function ReaderPage() {
     setPasted("");
   }
 
+  // Re-upload a PDF to retry extraction (the binary is never stored).
+  async function retryExtract(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setNote("Extracting…");
+    const r = await extractPdf(file);
+    patchSource(id, {
+      extractionStatus: r.status,
+      pageMap: r.ok ? r.pageMap : [],
+      pdfMeta: {
+        filename: file.name,
+        size: file.size,
+        pageCount: r.pageCount,
+        mime: file.type || "application/pdf",
+        uploadedAt: new Date().toISOString(),
+        extractedPages: r.extractedPages,
+      },
+    });
+    if (r.ok && setOriginalText(id, r.text)) {
+      setNote(null);
+      void analyzeSource(id, r.text, "quick");
+    } else {
+      setNote(r.message ?? "Extraction failed.");
+    }
+  }
+
+  function pageForOffset(offset: number): number | undefined {
+    return source!.pageMap?.find((p) => offset >= p.start && offset < p.end)?.page;
+  }
+  function pageForQuote(quote: string): number | undefined {
+    const i = source!.originalText.indexOf(quote);
+    return i < 0 ? undefined : pageForOffset(i);
+  }
+
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
       <Link href="/library" className="text-sm text-zinc-500 underline-offset-4 hover:underline">
@@ -112,8 +156,21 @@ export default function ReaderPage() {
         <p className="mt-1 text-sm text-zinc-400">
           {source.author && <span>{source.author} · </span>}
           {source.origin && <span>{source.origin} · </span>}
+          {source.pdfMeta && (
+            <span>
+              {source.pdfMeta.pageCount} page{source.pdfMeta.pageCount === 1 ? "" : "s"} ·{" "}
+              {Math.max(1, Math.round(source.pdfMeta.size / 1024))} KB ·{" "}
+            </span>
+          )}
           added {new Date(source.addedAt).toLocaleDateString()}
         </p>
+        {source.extractionStatus && (
+          <p className="mt-1 text-xs text-zinc-400">
+            PDF: {EXTRACTION_LABELS[source.extractionStatus]}
+            {source.pdfMeta && source.extractionStatus === "partial_text" &&
+              ` (${source.pdfMeta.extractedPages}/${source.pdfMeta.pageCount} pages)`}
+          </p>
+        )}
         {source.processingError && (
           <p className="mt-2 text-sm text-red-500">Processing error: {source.processingError}</p>
         )}
@@ -129,9 +186,23 @@ export default function ReaderPage() {
       {!hasText ? (
         <section className="rounded-2xl border border-dashed border-black/[.12] p-5 dark:border-white/[.14]">
           <p className="text-sm text-zinc-600 dark:text-zinc-300">
-            This {SOURCE_TYPE_LABELS[source.type].toLowerCase()} source needs its text.
-            Paste it below to process it. (Automatic extraction is a later ingestion adapter.)
+            {source.extractionStatus === "scanned_ocr_required"
+              ? "This looks like a scanned PDF — no selectable text was found. OCR isn't available yet; you can re-upload a text-based PDF or paste the text below."
+              : source.input === "pdf"
+                ? "Couldn't extract text from this PDF. Re-upload a text-based PDF to retry, or paste the text below."
+                : `This ${SOURCE_TYPE_LABELS[source.type].toLowerCase()} source needs its text. Paste it below to process it.`}
           </p>
+          {source.input === "pdf" && (
+            <div className="mt-3">
+              <label className="text-xs text-zinc-500">Retry extraction: </label>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={retryExtract}
+                className="text-sm"
+              />
+            </div>
+          )}
           <textarea
             value={pasted}
             onChange={(e) => setPasted(e.target.value)}
@@ -180,8 +251,23 @@ export default function ReaderPage() {
           {/* Reader */}
           <section className="mb-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Read</h2>
-            <div className="mt-2 whitespace-pre-wrap rounded-2xl border border-black/[.06] p-5 text-[15px] leading-relaxed text-zinc-800 dark:border-white/[.08] dark:text-zinc-200">
-              {source.originalText}
+            <div className="mt-2 rounded-2xl border border-black/[.06] p-5 text-[15px] leading-relaxed text-zinc-800 dark:border-white/[.08] dark:text-zinc-200">
+              {source.pageMap && source.pageMap.length > 0 ? (
+                source.pageMap
+                  .filter((p) => p.end > p.start)
+                  .map((p) => (
+                    <div key={p.page} className="mb-4">
+                      <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-300 dark:text-zinc-600">
+                        Page {p.page}
+                      </div>
+                      <div className="whitespace-pre-wrap">
+                        {source.originalText.slice(p.start, p.end)}
+                      </div>
+                    </div>
+                  ))
+              ) : (
+                <div className="whitespace-pre-wrap">{source.originalText}</div>
+              )}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="text-xs text-zinc-400">Select text, then:</span>
@@ -235,14 +321,20 @@ export default function ReaderPage() {
             <section className="mb-6">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Key quotes</h2>
               <ul className="mt-2 flex flex-col gap-2">
-                {source.keyQuotes.map((q, i) => (
-                  <li
-                    key={i}
-                    className="border-l-2 border-zinc-300 pl-3 text-sm text-zinc-600 dark:border-zinc-600 dark:text-zinc-300"
-                  >
-                    {q}
-                  </li>
-                ))}
+                {source.keyQuotes.map((q, i) => {
+                  const page = pageForQuote(q);
+                  return (
+                    <li
+                      key={i}
+                      className="border-l-2 border-zinc-300 pl-3 text-sm text-zinc-600 dark:border-zinc-600 dark:text-zinc-300"
+                    >
+                      {q}
+                      {page !== undefined && (
+                        <span className="ml-1 text-xs text-zinc-400">· p. {page}</span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           )}

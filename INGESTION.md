@@ -32,11 +32,20 @@ note }`). That's its only job.
   (mode `url`), which fetches the page and reduces HTML → text with **no
   dependency**. Degrades to `needsText` on fetch failure / JS-rendered
   pages / thin bodies.
-- **`pdfAdapter`** — PDF; **clean seam, not yet automated.** The single
-  extraction point is `extractPdfText(file)` (returns `null` today). A
-  future client pdf.js or server parser drops in there — nothing else
-  changes. Until then the source is created with provenance and its text is
-  pasted in the reader.
+- **`pdfAdapter`** — PDF; **real, page-aware extraction (LIFEOS-008).**
+  `lib/ingestion/pdfExtract.ts` runs **pdf.js in the browser** (dynamic
+  import; worker served from `public/pdf.worker.min.js`, copied from
+  node_modules at build time by `scripts/copy-pdf-worker.mjs`). Extracts text
+  **per page**, keeps a `pageMap` (page → char range in the normalized text),
+  and records `pdfMeta` (filename/size/pageCount/mime/uploadedAt/
+  extractedPages). **Only the extracted text is stored — never the PDF
+  binary** (no upload, no Vercel body limits, no Supabase Storage bucket, no
+  file-exposure risk). Chunks inherit `pageStart`/`pageEnd`; quotes show
+  their page. Scanned / malformed / password-protected PDFs are detected and
+  reported via `extractionStatus` (`text_extracted` / `partial_text` /
+  `scanned_ocr_required` / `extraction_failed`), falling back to manual paste
+  or PDF re-upload — never faked. Limits: 25 MB, 1500 pages, ~600k extracted
+  chars (excess → `partial_text`). OCR is not implemented (status only).
 
 `needsText: true` is the honest fallback: the source exists with provenance,
 and the reader collects the body (a one-time set — `originalText` stays

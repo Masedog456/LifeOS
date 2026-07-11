@@ -14,6 +14,11 @@
    — adds `chunk_results` / `analysis` / `stages` jsonb columns to
    `sources`). It is additive and rerunnable (`add column if not exists`);
    it does not touch existing rows, other tables, RLS, or triggers.
+3. Then run `supabase/migrations/0003_pdf_ingestion.sql` (LIFEOS-008 — adds
+   `pdf_meta` / `page_map` / `extraction_status` to `sources`). Also
+   additive/rerunnable. **No Supabase Storage bucket is needed:** PDF text
+   is extracted client-side and only the text + metadata are stored; the PDF
+   binary is never uploaded.
 3. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 

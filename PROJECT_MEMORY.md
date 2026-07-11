@@ -23,6 +23,31 @@ pending Product Owner approval).
 
 ## 2. Current Sprint Status
 
+- Date: 2026-07-11
+- **LIFEOS-008 — Real PDF ingestion: implemented.** The `pdfAdapter` seam
+  now does genuine **client-side, page-aware pdf.js extraction**
+  (`lib/ingestion/pdfExtract.ts`; worker served from
+  `public/pdf.worker.min.js`, copied at build via
+  `scripts/copy-pdf-worker.mjs` — git-ignored, version-matched). Extracts
+  text per page, keeps a `pageMap` (page→char-range), records `pdfMeta`
+  (filename/size/pageCount/mime/uploadedAt/extractedPages). **Only extracted
+  text is stored — never the binary**, so no upload, no Vercel body limits,
+  and **no Supabase Storage bucket** (Phase 6 storage was genuinely
+  optional). Page-aware chunks (`pageStart`/`pageEnd`), quote page
+  references (derived), page-labeled reading view. Honest
+  `extractionStatus` (text_extracted / partial_text / scanned_ocr_required /
+  extraction_failed) with scanned/failed → needs-text + PDF re-upload retry;
+  OCR is status-only (not implemented). Limits: 25 MB / 1500 pages / ~600k
+  chars; password-protected + corrupt handled with clear messages; no
+  document text or secrets logged. Shared `lib/textNormalize.ts` keeps
+  extraction offsets and pipeline chunking aligned. Additive migration
+  `0003_pdf_ingestion.sql` (jsonb columns; RLS/triggers untouched) +
+  adapter mapping. Verified with real generated PDFs: **16/16 PDF checks**
+  (multi-page extraction, reading order, page provenance, chunk page ranges,
+  no-binary-stored, Full analysis, refresh persistence, scanned + broken
+  handling) + **9/9 regression + 12/12 long-source**, zero runtime errors;
+  `lint`/`build` green. No retrieval/embeddings/graphs/OCR/EPUB; still one
+  AI route.
 - Date: 2026-07-10
 - **LIFEOS-007 — Long-source intelligence + cost controls: implemented.**
   Sources are now analyzed from their **full content** via chunk-level
@@ -664,3 +689,24 @@ scope or order.
   dependent (pending). Docs updated (`INGESTION.md`, `PERSISTENCE_QA.md`,
   `PROJECT_MEMORY.md`). No product redesign; no graphs/embeddings/vectors/
   megathreads/agents/OCR/EPUB/comparative intelligence; still one AI route.
+- 2026-07-11 — Implemented **LIFEOS-008 real PDF ingestion**. Added
+  `pdfjs-dist` + `scripts/copy-pdf-worker.mjs` (predev/prebuild copies the
+  worker to `public/pdf.worker.min.js`; git-ignored). New:
+  `lib/ingestion/pdfExtract.ts` (client pdf.js page-aware extraction +
+  limits + scanned/failed detection), `lib/textNormalize.ts` (shared
+  normalizer so extraction offsets == pipeline chunk offsets),
+  `supabase/migrations/0003_pdf_ingestion.sql`. Extended `types/mvp.ts`
+  (chunk `pageStart`/`pageEnd`; `PageSpan`, `PdfMeta`, `ExtractionStatus`;
+  source `pdfMeta`/`pageMap`/`extractionStatus`), `lib/ingestion/types.ts`
+  (IngestionResult PDF fields), `lib/ingestion/pdfAdapter.ts` (real
+  extraction), `lib/ingestion/index.ts` + `lib/mvpStore.ts` (`addSource`
+  carries PDF fields), `lib/pipeline.ts` (page-annotated chunks via
+  `pageMap`; uses shared normalizer), the Reader (PDF meta + extraction
+  status, page-labeled read view, quote page refs, re-upload retry),
+  `lib/adapters/supabaseAdapter.ts` (map new columns), `eslint.config.mjs`
+  (ignore `public/**` vendored worker). Decision: **do not store the PDF
+  binary** (client extraction, text-only) → no Storage bucket/policies
+  needed, safest posture. Verified with generated fixtures (16/16 PDF +
+  9/9 regression + 12/12 long-source, no runtime errors); real-AI/Supabase
+  persistence of the new columns remain credential-pending. `lint`=0,
+  `build`=0.

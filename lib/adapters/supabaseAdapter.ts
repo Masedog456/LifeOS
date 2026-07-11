@@ -216,6 +216,9 @@ function sourceToRow(s: KnowledgeSource) {
     chunk_results: s.chunkResults ?? [],
     analysis: s.analysis ?? null,
     stages: s.stages ?? null,
+    pdf_meta: s.pdfMeta ?? null,
+    page_map: s.pageMap ?? null,
+    extraction_status: s.extractionStatus ?? null,
     added_at: s.addedAt,
   };
 }
@@ -242,6 +245,9 @@ function rowToSource(r: any, keyQuotes: string[]): KnowledgeSource {
     chunkResults: (r.chunk_results ?? []) as KnowledgeSource["chunkResults"],
     analysis: (r.analysis ?? undefined) as KnowledgeSource["analysis"],
     stages: (r.stages ?? undefined) as KnowledgeSource["stages"],
+    pdfMeta: (r.pdf_meta ?? undefined) as KnowledgeSource["pdfMeta"],
+    pageMap: (r.page_map ?? undefined) as KnowledgeSource["pageMap"],
+    extractionStatus: (r.extraction_status ?? undefined) as KnowledgeSource["extractionStatus"],
   };
 }
 

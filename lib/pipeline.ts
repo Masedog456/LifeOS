@@ -19,11 +19,13 @@
 import { mapChunk, reduceSummary } from "@/lib/aiClient";
 import { dedupStrings } from "@/lib/dedup";
 import { getSource, patchSource, setProcessingState } from "@/lib/mvpStore";
+import { normalizeText } from "@/lib/textNormalize";
 import type {
   AnalysisMeta,
   ChunkResult,
   Coverage,
   KnowledgeChunk,
+  PageSpan,
   ProcessingMode,
   StageName,
   StageStatus,
@@ -50,21 +52,26 @@ class Cancelled extends Error {}
 
 // ---- text + chunking ----
 
-function normalize(text: string): string {
-  return text
-    .replace(/\r\n?/g, "\n")
-    .split("\n")
-    .map((l) => l.replace(/[ \t\f]+$/g, ""))
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+const normalize = normalizeText;
+
+/** Annotate a chunk's [start,end) with the page range it spans (PDF sources). */
+function pageRange(pageMap: PageSpan[] | undefined, start: number, end: number) {
+  if (!pageMap || pageMap.length === 0) return {};
+  const overlapping = pageMap.filter((p) => p.start < end && p.end > start);
+  if (overlapping.length === 0) return {};
+  return { pageStart: overlapping[0].page, pageEnd: overlapping[overlapping.length - 1].page };
 }
 
 /**
  * Deterministic chunking with character offsets into the normalized text.
- * Same text → same chunks (stable ids/boundaries across reruns).
+ * Same text → same chunks (stable ids/boundaries across reruns). When a
+ * pageMap is supplied (PDFs), each chunk is annotated with its page range.
  */
-export function buildChunks(sourceId: string, text: string): KnowledgeChunk[] {
+export function buildChunks(
+  sourceId: string,
+  text: string,
+  pageMap?: PageSpan[],
+): KnowledgeChunk[] {
   const regions: Array<[number, number]> = [];
   const paraRe = /[^\n]+(?:\n(?!\n)[^\n]+)*/g;
   let m: RegExpExecArray | null;
@@ -115,6 +122,7 @@ export function buildChunks(sourceId: string, text: string): KnowledgeChunk[] {
     start,
     end,
     text: text.slice(start, end).trim(),
+    ...pageRange(pageMap, start, end),
   }));
 }
 
@@ -123,7 +131,7 @@ function ensureChunks(sourceId: string, norm: string): KnowledgeChunk[] {
   const existing = getSource(sourceId)?.chunks ?? [];
   const usable = existing.length > 0 && existing.every((c) => typeof c.start === "number");
   if (usable) return existing;
-  const chunks = buildChunks(sourceId, norm);
+  const chunks = buildChunks(sourceId, norm, getSource(sourceId)?.pageMap);
   patchSource(sourceId, { chunks });
   return chunks;
 }

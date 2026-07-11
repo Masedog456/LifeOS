@@ -1,59 +1,64 @@
 /**
- * PDF adapter — clean seam with a graceful fallback.
+ * PDF adapter — real, page-aware text extraction (LIFEOS-008).
  *
- * Robust PDF text extraction requires a heavy, fragile dependency (PDF
- * parsing + font/encoding handling), which LIFEOS-006 deliberately does NOT
- * introduce (per the ticket: "do not hack around limitations"). Instead the
- * extraction point is isolated in `extractPdfText` below: today it returns
- * null (→ the user pastes the text in the reader, provenance preserved), and
- * a future implementation (client pdf.js or a server parser behind
- * `/api/extract` mode "pdf") drops in HERE without touching the pipeline,
- * the reader, or storage.
+ * Extraction happens client-side via pdf.js (`extractPdf`), storing only the
+ * extracted text + page map + PDF metadata — never the binary. Scanned,
+ * malformed, or password-protected PDFs are reported honestly and fall back
+ * to a manual paste (with the extraction status recorded), never faked.
  */
 
 import type { IngestionAdapter, PdfIngestionRequest } from "@/lib/ingestion/types";
-
-/**
- * The single extraction seam. Returns extracted text, or null when
- * automatic extraction is unavailable. Intentionally does no network work
- * today (uploading bytes for a no-op would be wasteful).
- */
-async function extractPdfText(file: File): Promise<string | null> {
-  // A future implementation reads `file` here (client pdf.js, or POST the
-  // bytes to `/api/extract` mode "pdf"). Today: no automatic extraction.
-  void file;
-  return null;
-}
+import { extractPdf } from "@/lib/ingestion/pdfExtract";
 
 export const pdfAdapter: IngestionAdapter<PdfIngestionRequest> = {
   kind: "pdf",
   label: "PDF",
-  automated: false,
+  automated: true,
   async ingest(request) {
-    const name = request.file.name.replace(/\.pdf$/i, "");
+    const file = request.file;
+    const name = file.name.replace(/\.pdf$/i, "");
+    const uploadedAt = new Date().toISOString();
+
+    const result = await extractPdf(file);
+
+    const pdfMeta = {
+      filename: file.name,
+      size: file.size,
+      pageCount: result.pageCount,
+      mime: file.type || "application/pdf",
+      uploadedAt,
+      extractedPages: result.extractedPages,
+    };
+
     const base = {
       type: "pdf" as const,
       input: "pdf" as const,
       title: request.title?.trim() || name,
       author: request.author?.trim() || undefined,
-      origin: request.file.name,
+      origin: file.name,
+      pdfMeta,
+      extractionStatus: result.status,
     };
 
-    let text: string | null = null;
-    try {
-      text = await extractPdfText(request.file);
-    } catch {
-      text = null;
-    }
-
-    if (!text || !text.trim()) {
+    if (!result.ok) {
+      // Scanned / failed / password-protected → keep provenance, await manual text.
       return {
         ...base,
         text: "",
         needsText: true,
-        note: "Automatic PDF extraction isn't enabled yet — paste the text below to process it.",
+        note:
+          result.message ??
+          "Couldn't extract text from this PDF — paste it below to process it.",
+        pageMap: [],
       };
     }
-    return { ...base, text: text.trim(), needsText: false };
+
+    return {
+      ...base,
+      text: result.text,
+      needsText: false,
+      pageMap: result.pageMap,
+      note: result.message,
+    };
   },
 };

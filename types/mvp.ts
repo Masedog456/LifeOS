@@ -112,8 +112,37 @@ export interface KnowledgeChunk {
   /** Char offsets into the normalized source text (present for chunks built ≥ LIFEOS-007). */
   start?: number;
   end?: number;
+  /** Page range this chunk spans (PDF sources, LIFEOS-008). */
+  pageStart?: number;
+  pageEnd?: number;
   /** Optional section/chapter label. */
   label?: string;
+}
+
+// ---------- PDF ingestion (LIFEOS-008) ----------
+
+/** Char range of one page within the normalized extracted text. */
+export interface PageSpan {
+  page: number;
+  start: number;
+  end: number;
+}
+
+export type ExtractionStatus =
+  | "text_extracted"
+  | "partial_text"
+  | "scanned_ocr_required"
+  | "extraction_failed";
+
+/** Original PDF metadata (the binary itself is never stored). */
+export interface PdfMeta {
+  filename: string;
+  size: number;
+  pageCount: number;
+  mime: string;
+  uploadedAt: ISO;
+  /** Number of pages actually extracted (may be < pageCount if capped). */
+  extractedPages: number;
 }
 
 // ---------- Long-source analysis (LIFEOS-007) ----------
@@ -191,6 +220,11 @@ export interface KnowledgeSource {
   stages?: Record<StageName, StageStatus>;
   /** Coverage + provenance of the latest analysis run. */
   analysis?: AnalysisMeta;
+  // ---- PDF ingestion (LIFEOS-008) ----
+  pdfMeta?: PdfMeta;
+  /** Page → char-range map into the (immutable) extracted text. */
+  pageMap?: PageSpan[];
+  extractionStatus?: ExtractionStatus;
 }
 
 export interface StoreState {
