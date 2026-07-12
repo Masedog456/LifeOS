@@ -123,6 +123,48 @@ The section below describes a *possible future* semantic layer. It is
 engine above. A future migration to embeddings would sit behind the same
 `search`/`relatedTo` seams.
 
+## Comparative intelligence (LIFEOS-010 — implemented)
+
+Cross-source comparison is **implemented** on top of the deterministic
+retrieval layer. It compares 2–5 sources (or a belief + sources) while
+preserving genuine differences and exact provenance. No graph UI, no
+megathreads, no background agents, and it never changes beliefs or the
+Constitution automatically.
+
+- **Deterministic evidence packet** (`lib/comparison/evidence.ts`).
+  `buildEvidence(state, inputs, question)` assembles a small, provenance-
+  bearing packet from data already in the store: per source — metadata,
+  summary, ≤3 representative chunk summaries, ≤4 exact quotes (page/offset),
+  ≤6 concepts, ≤3 candidate claims; per belief — its text; per passage — the
+  exact quote. The LIFEOS-009 retrieval engine (`search`) ranks which
+  quotes/chunks are most relevant to the comparison question. Per-source
+  caps plus a total `MAX_PACKET_CHARS` budget keep whole books from being
+  sent. Every item gets a stable id (`E1…En`) and records AI/mock origin +
+  coverage.
+- **One structured AI call, then verification** (`lib/comparison/run.ts`).
+  The packet → a single `compare` call on the existing `/api/ai` route →
+  strict validation (`lib/comparison/schema.ts`) that **drops any point
+  whose `evidenceIds` are not in the packet** (unsupported prose never
+  becomes a conclusion; it is flagged). For larger comparisons (≥4 sources)
+  an optional second `compare_verify` pass reviews the draft. The mock
+  (`lib/mockCompare.ts`) produces a real, evidence-cited result offline, so
+  the whole flow works with no API key.
+- **Terminology & contradiction care** (Phases 7–8). The prompt and
+  validator require cautious language ("resembles", "may parallel", "differs
+  because") and flag flattening phrasing ("identical", "interchangeable").
+  Each disagreement is classified (logical / practical / definitional /
+  level-of-analysis / historical / ambiguity) — not every difference is a
+  contradiction.
+- **Human judgment** (`components/ComparisonResult.tsx`). Every insight is a
+  proposal: Accept → the existing Belief Inbox, Rewrite → Inbox, Question,
+  Reject, or just save the comparison. Judgments are append-only on the
+  `Comparison`; the Constitution is never touched automatically.
+- **Persistence.** A comparison is one row (`comparisons`, migration
+  `0005_comparative_intelligence.sql`) with jsonb `inputs`/`evidence`/
+  `result`/`judgments`, own-rows RLS. Local fallback stores it in the same
+  state blob. Entry points: Nav, Library, Reader ("compare with another
+  source"), Constitution ("compare this belief with sources").
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

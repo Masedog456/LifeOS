@@ -15,6 +15,8 @@ import {
   mockSummary,
   type ChunkMap,
 } from "@/lib/mockAI";
+import { mockCompare } from "@/lib/mockCompare";
+import type { EvidenceItem } from "@/types/mvp";
 
 export type AiSource = "ai" | "mock";
 export type { ChunkMap } from "@/lib/mockAI";
@@ -70,5 +72,49 @@ export function mapChunk(text: string) {
 export function reduceSummary(summaries: string[]) {
   return call<string>({ task: "reduce_summary", summaries }, () =>
     mockReduceSummary(summaries),
+  );
+}
+
+// ---------- Comparative intelligence (LIFEOS-010) ----------
+
+/** Evidence sent to the compare task (provenance kept for prompt + citation). */
+function toWire(evidence: EvidenceItem[]) {
+  return evidence.map((e) => ({ id: e.id, group: e.group, kind: e.kind, text: e.text, page: e.page }));
+}
+
+/** One structured comparison call. Returns the RAW result object (validated by caller). */
+export function runComparison(args: {
+  evidence: EvidenceItem[];
+  question: string;
+  title: string;
+  sourcesCompared: string[];
+  coverageNote: string;
+}) {
+  const wire = toWire(args.evidence);
+  return call<unknown>(
+    {
+      task: "compare",
+      evidence: wire,
+      question: args.question,
+      title: args.title,
+      sourcesCompared: args.sourcesCompared,
+      coverageNote: args.coverageNote,
+    },
+    () =>
+      mockCompare({
+        evidence: args.evidence,
+        question: args.question,
+        title: args.title,
+        sourcesCompared: args.sourcesCompared,
+        coverageNote: args.coverageNote,
+      }),
+  );
+}
+
+/** Optional second-opinion verification pass (larger comparisons only). */
+export function verifyComparison(evidence: EvidenceItem[], draft: unknown) {
+  return call<{ cautions?: string[]; removeStatements?: string[] }>(
+    { task: "compare_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
+    () => ({ cautions: [], removeStatements: [] }),
   );
 }

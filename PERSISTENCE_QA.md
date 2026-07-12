@@ -26,7 +26,14 @@
    touch migrations 0001–0003, existing rows, other tables, or their RLS.
    Retrieval itself is deterministic and in-memory — this table stores
    **only** the user's relevance feedback, never source text or beliefs.
-5. **Project Settings → API**: copy the **Project URL** and the **anon
+5. Then run `supabase/migrations/0005_comparative_intelligence.sql`
+   (LIFEOS-010 — adds the `comparisons` table: one row per saved comparison
+   with jsonb `inputs`/`evidence`/`result`/`judgments`, own-rows RLS with
+   full CRUD so append-only judgments can be added to the jsonb array).
+   Additive and rerunnable; it does not touch migrations 0001–0004, existing
+   rows, other tables, or their RLS. Comparison itself sends only a small,
+   capped evidence packet to the AI route — never whole sources.
+6. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -98,6 +105,13 @@ changes runtime behavior.
 - [x] Refresh the browser → all data remains (localStorage).
 - [x] `/api/ai` invalid task → HTTP 400; invalid JSON → HTTP 400.
 - [x] `/api/ai` with no key → deterministic mock (`"source":"mock"`).
+- [x] **Comparison (LIFEOS-010):** compare 2 sources → structured result;
+      agreements/disagreements cite exact evidence chips; shared concepts
+      shown; partial-coverage sources labeled; an insight → Belief Inbox
+      (proposal + capture created, Constitution unchanged); unsupported AI
+      claims (bad evidence ids) dropped from conclusions + flagged; saved
+      comparison persists after refresh; 5-source select cap + 6th disabled;
+      belief-vs-sources runs. (15/15 automated checks, mock mode.)
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
@@ -135,6 +149,9 @@ changes runtime behavior.
 - [ ] No wrong-user migration: if a different email signs in on a browser
       that already held another account's data, that data is **not** pushed
       into the new account (it stays in its owner's account).
+- [ ] Saved comparisons sync: create a comparison in Browser A → it appears
+      in Browser B (same email). A second account cannot read it (RLS on
+      `comparisons`).
 
 ## C. Real Anthropic (CREDENTIAL-DEPENDENT, pending)
 

@@ -9,6 +9,7 @@ import AuthControl from "@/components/AuthControl";
 const LINKS = [
   { href: "/", label: "Capture" },
   { href: "/library", label: "Library" },
+  { href: "/compare", label: "Compare" },
   { href: "/inbox", label: "Inbox" },
   { href: "/constitution", label: "Constitution" },
 ];

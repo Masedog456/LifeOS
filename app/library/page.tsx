@@ -60,13 +60,23 @@ export default function LibraryPage() {
             the material your beliefs are formed from.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAdd((v) => !v)}
-          className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          {showAdd ? "Close" : "Add source"}
-        </button>
+        <div className="flex items-center gap-2">
+          {state.sources.length >= 2 && (
+            <Link
+              href="/compare"
+              className="rounded-full border border-black/[.12] px-4 py-2 text-sm font-medium hover:bg-black/[.04] dark:border-white/[.15] dark:hover:bg-white/[.06]"
+            >
+              Compare
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowAdd((v) => !v)}
+            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90 dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            {showAdd ? "Close" : "Add source"}
+          </button>
+        </div>
       </header>
 
       {showAdd && (

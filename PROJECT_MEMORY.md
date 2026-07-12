@@ -24,6 +24,43 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-12
+- **LIFEOS-010 — Comparative intelligence: implemented.** Cross-source
+  comparison over 2–5 sources (or a belief + sources) that preserves genuine
+  differences and exact provenance. Flow is **deterministic-first**: a capped
+  evidence packet (`lib/comparison/evidence.ts` — per source: metadata,
+  summary, ≤3 chunk summaries, ≤4 exact quotes with page/offset, ≤6 concepts,
+  ≤3 candidate claims; belief text; passage quote — ranked for relevance to
+  the question via the LIFEOS-009 `search` engine, stable ids `E1…En`,
+  `MAX_PACKET_CHARS` budget) → **one** structured `compare` call on the
+  single `/api/ai` route → strict validation (`lib/comparison/schema.ts`
+  drops any point whose `evidenceIds` aren't in the packet → flagged, never
+  shown as a conclusion) → **optional** `compare_verify` second pass only for
+  ≥4 sources. Strict result schema (`ComparisonResultData`): title, question,
+  sources, shared concepts, agreements, disagreements (classified: logical /
+  practical / definitional / level-of-analysis / historical / ambiguity),
+  terminology differences, assumptions, strongest evidence per position,
+  unresolved tensions, questions, relation-to-beliefs, limitations, coverage
+  — every agreement/disagreement cites evidence ids. Terminology protection:
+  cautious language required, flattening phrasing ("identical",
+  "interchangeable") flagged. Human judgment (`components/ComparisonResult`):
+  each insight → Accept/Rewrite into the existing Belief Inbox, Question,
+  Reject, or save without adopting; **never** auto-updates the Constitution;
+  judgments append-only on the `Comparison`. Cost controls: max 5 sources,
+  per-source + total-size caps, approximate call count shown, partial-
+  coverage warning, confirmation for expensive (≥4-source) runs. Mock
+  (`lib/mockCompare.ts`) yields a real evidence-cited result offline.
+  Persistence: `comparisons` state + adapters + additive migration
+  `0005_comparative_intelligence.sql` (jsonb row, own-rows RLS, rerunnable;
+  migrations 0001–0004 untouched). New `/compare` workspace + `/compare/[id]`;
+  entry points from Nav, Library, Reader, Constitution. Verified: **15/15
+  comparison checks** (2-source, 5-source cap, belief-vs-sources, agreements/
+  disagreements cite evidence, partial coverage labeled, unsupported claims
+  dropped + flagged, insight → Inbox, Constitution unchanged, persistence) +
+  **9/9 regression + 12/12 long-source + 16/16 PDF + 11/11 retrieval**, zero
+  runtime errors; `lint`/`build` green. No graph UI, megathreads, or agents;
+  still one AI route. Supabase sync/RLS/cross-device of `comparisons` are
+  code-complete but credential-pending (local mode fully verified).
+- Date: 2026-07-12
 - **LIFEOS-009 — Intelligent Library retrieval: implemented (deterministic).**
   Retrieval across every record type (source / summary / concept / quote /
   chunk / candidate belief / capture / unresolved proposal / belief /
@@ -769,3 +806,29 @@ scope or order.
   12/12 long-source + 16/16 PDF checks, zero runtime errors; `lint`=0,
   `build`=0. Docs updated (`ARCHITECTURE.md`, `PERSISTENCE_QA.md`,
   `PROJECT_MEMORY.md`). Still one AI route; no graphs/megathreads/agents.
+- 2026-07-12 — Implemented **LIFEOS-010 comparative intelligence**. New:
+  `lib/comparison/evidence.ts` (deterministic, capped, provenance-bearing
+  evidence packet built via the LIFEOS-009 retrieval layer),
+  `lib/comparison/schema.ts` (strict result validation — drops points citing
+  invalid evidence ids, flags flattening language), `lib/comparison/run.ts`
+  (orchestrator: packet → one `compare` call → validate → optional
+  `compare_verify` for ≥4 sources), `lib/mockCompare.ts` (deterministic
+  offline comparison), `components/ComparisonResult.tsx` (result view + human
+  judgment controls), `app/compare/page.tsx` + `app/compare/[id]/page.tsx`,
+  `supabase/migrations/0005_comparative_intelligence.sql`. Extended
+  `types/mvp.ts` (`ComparisonInputRef`, `EvidenceItem`/`EvidenceGroup`,
+  `ComparisonResultData` + sub-types, `Comparison`, `StoreState.comparisons`),
+  `app/api/ai/route.ts` (`compare` + `compare_verify` tasks, larger
+  max_tokens, evidence input parsing), `lib/aiClient.ts` (`runComparison` /
+  `verifyComparison`), `lib/mvpStore.ts` (`comparisons` state +
+  `saveComparison` / `judgeComparisonInsight`), `lib/persistence.ts`,
+  `lib/adapters/localAdapter.ts`, `lib/adapters/supabaseAdapter.ts` (load/
+  save/delete + row mappers). Entry points added to `components/Nav.tsx`,
+  `app/library/page.tsx`, `app/library/[id]/page.tsx`,
+  `app/constitution/page.tsx`. Insights flow into the existing Belief Inbox;
+  the Constitution is never changed automatically. Verified 15/15 comparison
+  + 9/9 regression + 12/12 long-source + 16/16 PDF + 11/11 retrieval checks,
+  zero runtime errors; `lint`=0, `build`=0. Supabase persistence of
+  `comparisons` (sync/RLS/cross-device) is code-complete but credential-
+  pending. No graph UI, megathreads, background agents, or new AI routes
+  beyond the single `/api/ai`.

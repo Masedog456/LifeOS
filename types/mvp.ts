@@ -268,10 +268,153 @@ export interface FeedbackEntry {
   snoozeUntil?: ISO;
 }
 
+// ---------- Comparative intelligence (LIFEOS-010) ----------
+
+/** What kind of material was selected into a comparison. */
+export type ComparisonInputKind = "source" | "belief" | "passage";
+
+/** A single selected material in a comparison, with enough to rebuild evidence. */
+export interface ComparisonInputRef {
+  kind: ComparisonInputKind;
+  /** Display label (source title / belief snippet / passage preview). */
+  label: string;
+  sourceId?: string;
+  beliefId?: string;
+  /** For passage inputs: the exact selected quote + provenance. */
+  quote?: string;
+  page?: number;
+}
+
+export type EvidenceKind =
+  | "metadata"
+  | "summary"
+  | "chunk_summary"
+  | "quote"
+  | "concept"
+  | "claim"
+  | "belief";
+
+/**
+ * One deterministic, provenance-bearing evidence item. Built from existing
+ * data (never fabricated) and referenced by id from the comparison result.
+ */
+export interface EvidenceItem {
+  /** Stable packet id, e.g. "E1". */
+  id: string;
+  kind: EvidenceKind;
+  /** Which selected material this belongs to (label). */
+  group: string;
+  sourceId?: string;
+  beliefId?: string;
+  chunkId?: string;
+  page?: number;
+  start?: number;
+  end?: number;
+  /** Exact text (verbatim for quotes). */
+  text: string;
+  /** Whether the underlying artifact came from real AI or the mock. */
+  origin?: "ai" | "mock";
+}
+
+/** Evidence grouped per selected material, with coverage honesty. */
+export interface EvidenceGroup {
+  ref: ComparisonInputRef;
+  coverage: Coverage | null;
+  /** True when only part of the source was analyzed/extracted. */
+  partial: boolean;
+  items: EvidenceItem[];
+}
+
+/** A synthesized point that MUST cite evidence ids. */
+export interface ComparisonPoint {
+  statement: string;
+  evidenceIds: string[];
+}
+
+/** Same term used differently, or different terms with similar function. */
+export interface TerminologyDifference {
+  term: string;
+  note: string;
+  evidenceIds: string[];
+}
+
+export type ContradictionKind =
+  | "logical"
+  | "practical"
+  | "definitional"
+  | "level_of_analysis"
+  | "historical"
+  | "ambiguity";
+
+export interface Disagreement extends ComparisonPoint {
+  /** Not every difference is a contradiction — classify it. */
+  kind: ContradictionKind;
+}
+
+export interface PositionEvidence {
+  position: string;
+  evidenceIds: string[];
+}
+
+/** Strict structured comparison result (Phase 4). */
+export interface ComparisonResultData {
+  title: string;
+  question: string;
+  sourcesCompared: string[];
+  sharedConcepts: string[];
+  agreements: ComparisonPoint[];
+  disagreements: Disagreement[];
+  terminologyDifferences: TerminologyDifference[];
+  assumptions: ComparisonPoint[];
+  strongestEvidence: PositionEvidence[];
+  unresolvedTensions: ComparisonPoint[];
+  questionsForUser: string[];
+  relationToBeliefs: ComparisonPoint[];
+  limitations: string[];
+  coverageNote: string;
+  /** Points dropped in verification for citing missing/invalid evidence. */
+  flagged?: string[];
+}
+
+export type ComparisonDecision = "accepted" | "rewritten" | "questioned" | "rejected";
+
+/** A human verdict on one comparison insight (append-only). */
+export interface ComparisonJudgment {
+  /** Which insight, e.g. "agreement:0" or "disagreement:2". */
+  insightRef: string;
+  decision: ComparisonDecision;
+  at: ISO;
+  note?: string;
+}
+
+/** A saved comparison — a PROPOSAL, never an automatic conclusion. */
+export interface Comparison {
+  id: string;
+  title: string;
+  question: string;
+  inputs: ComparisonInputRef[];
+  sourceIds: string[];
+  beliefIds: string[];
+  /** Flat evidence packet the result references by id. */
+  evidence: EvidenceItem[];
+  result: ComparisonResultData;
+  /** Model label ("mock" or the configured model). */
+  aiModel: string;
+  source: "ai" | "mock";
+  coverage: Coverage | null;
+  partial: boolean;
+  /** Whether a second verification pass ran. */
+  verified: boolean;
+  createdAt: ISO;
+  /** Append-only human judgments on the insights. */
+  judgments: ComparisonJudgment[];
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
   beliefs: Belief[];
   sources: KnowledgeSource[];
   feedback: FeedbackEntry[];
+  comparisons: Comparison[];
 }

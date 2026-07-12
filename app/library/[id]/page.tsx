@@ -422,7 +422,7 @@ export default function ReaderPage() {
           </section>
 
           {/* Footer controls */}
-          <footer className="mt-8 flex flex-wrap gap-3 border-t border-black/[.05] pt-4 dark:border-white/[.06]">
+          <footer className="mt-8 flex flex-wrap items-center gap-3 border-t border-black/[.05] pt-4 dark:border-white/[.06]">
             {source.status !== "read" && (
               <button
                 type="button"
@@ -432,6 +432,12 @@ export default function ReaderPage() {
                 Mark as read
               </button>
             )}
+            <Link
+              href={`/compare?add=${id}`}
+              className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              Compare with another source →
+            </Link>
           </footer>
         </>
       )}

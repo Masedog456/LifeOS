@@ -111,6 +111,16 @@ function BeliefRow({ belief }: { belief: Belief }) {
             {belief.judgments.length === 1 ? "" : "s"}
           </p>
 
+          {/* Compare this belief against sources (entry point) */}
+          <div>
+            <Link
+              href={`/compare?belief=${belief.id}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Compare this belief with sources →
+            </Link>
+          </div>
+
           {/* Related evidence — collapsed, never auto-resolving */}
           {related.length > 0 && (
             <div>

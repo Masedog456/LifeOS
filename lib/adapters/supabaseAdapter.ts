@@ -16,6 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Belief,
   Capture,
+  Comparison,
   JudgmentEntry,
   KnowledgeChunk,
   KnowledgeSource,
@@ -44,7 +45,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -54,6 +55,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("user_judgments").select("*").order("seq", { ascending: true }),
         this.client.from("saved_quotes").select("*").order("created_at", { ascending: true }),
         this.client.from("retrieval_feedback").select("*"),
+        this.client.from("comparisons").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -64,7 +66,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       revisions.error ||
       judgments.error ||
       quotes.error ||
-      feedback.error;
+      feedback.error ||
+      comparisons.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -86,6 +89,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         at: r.at,
         snoozeUntil: r.snooze_until ?? undefined,
       })),
+      comparisons: (comparisons.data ?? []).map(rowToComparison),
     };
   }
 
@@ -121,6 +125,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         snooze_until: f.snoozeUntil ?? null,
       }));
       await this.insertIgnore("retrieval_feedback", rows, "user_id,record_id,at");
+    }
+    if (state.comparisons.length) {
+      await this.throwing(this.client.from("comparisons").upsert(state.comparisons.map(comparisonToRow)));
     }
     this.lastState = "synced";
     this.lastError = undefined;
@@ -184,6 +191,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("comparisons").delete().eq("user_id", uid));
     await this.throwing(this.client.from("beliefs").delete().eq("user_id", uid));
     await this.throwing(this.client.from("proposals").delete().eq("user_id", uid));
     await this.throwing(this.client.from("captures").delete().eq("user_id", uid));
@@ -330,6 +338,46 @@ function rowToBelief(r: any, revs: any[], juds: any[]): Belief {
     judgments: [...juds]
       .sort((a, b) => a.seq - b.seq)
       .map((x) => ({ decision: x.decision, at: x.at, note: x.note ?? undefined } as JudgmentEntry)),
+  };
+}
+
+function comparisonToRow(c: Comparison) {
+  return {
+    id: c.id,
+    title: c.title,
+    question: c.question,
+    inputs: c.inputs,
+    source_ids: c.sourceIds,
+    belief_ids: c.beliefIds,
+    evidence: c.evidence,
+    result: c.result,
+    ai_model: c.aiModel,
+    source: c.source,
+    coverage: c.coverage,
+    partial: c.partial,
+    verified: c.verified,
+    judgments: c.judgments,
+    created_at: c.createdAt,
+  };
+}
+
+function rowToComparison(r: any): Comparison {
+  return {
+    id: r.id,
+    title: r.title,
+    question: r.question,
+    inputs: (r.inputs ?? []) as Comparison["inputs"],
+    sourceIds: (r.source_ids ?? []) as string[],
+    beliefIds: (r.belief_ids ?? []) as string[],
+    evidence: (r.evidence ?? []) as Comparison["evidence"],
+    result: r.result as Comparison["result"],
+    aiModel: r.ai_model ?? "mock",
+    source: r.source ?? "mock",
+    coverage: r.coverage ?? null,
+    partial: Boolean(r.partial),
+    verified: Boolean(r.verified),
+    createdAt: r.created_at,
+    judgments: (r.judgments ?? []) as Comparison["judgments"],
   };
 }
 

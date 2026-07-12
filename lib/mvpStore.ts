@@ -11,6 +11,8 @@ import { useSyncExternalStore } from "react";
 import type {
   Belief,
   Capture,
+  Comparison,
+  ComparisonDecision,
   FeedbackEntry,
   FeedbackVerdict,
   JudgmentEntry,
@@ -32,6 +34,7 @@ const EMPTY_STATE: StoreState = {
   beliefs: [],
   sources: [],
   feedback: [],
+  comparisons: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -94,6 +97,10 @@ export function hydrate() {
           candidateBeliefs: asArray<string>(s?.candidateBeliefs),
         })),
         feedback: asArray<FeedbackEntry>(parsed.feedback),
+        comparisons: asArray<Comparison>(parsed.comparisons).map((c) => ({
+          ...c,
+          judgments: asArray<Comparison["judgments"][number]>(c?.judgments),
+        })),
       };
       emit();
     }
@@ -105,7 +112,7 @@ export function hydrate() {
 /** Wipe all data (local + remote, if configured). */
 export function resetStore() {
   clearState();
-  setState({ captures: [], proposals: [], beliefs: [], sources: [], feedback: [] });
+  setState({ captures: [], proposals: [], beliefs: [], sources: [], feedback: [], comparisons: [] });
 }
 
 /** Record user feedback on a surfaced retrieval record (append-only). */
@@ -467,4 +474,33 @@ export function beliefsFromSource(s: StoreState, sourceId: string): Belief[] {
     s.captures.filter((c) => c.sourceId === sourceId).map((c) => c.id),
   );
   return s.beliefs.filter((b) => captureIds.has(b.captureId));
+}
+
+// ---------- Comparative intelligence actions (LIFEOS-010) ----------
+
+/** Persist a completed comparison (a proposal, never a Constitution change). */
+export function saveComparison(comparison: Comparison): void {
+  setState({ ...state, comparisons: [comparison, ...state.comparisons] });
+}
+
+/** Append a human judgment on one comparison insight (append-only). */
+export function judgeComparisonInsight(
+  comparisonId: string,
+  insightRef: string,
+  decision: ComparisonDecision,
+  note?: string,
+): void {
+  const at = now();
+  setState({
+    ...state,
+    comparisons: state.comparisons.map((c) =>
+      c.id === comparisonId
+        ? { ...c, judgments: [...c.judgments, { insightRef, decision, at, ...(note ? { note } : {}) }] }
+        : c,
+    ),
+  });
+}
+
+export function comparisonById(s: StoreState, comparisonId: string): Comparison | undefined {
+  return s.comparisons.find((c) => c.id === comparisonId);
 }

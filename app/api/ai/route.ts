@@ -27,6 +27,7 @@ import {
   mockSummary,
   type ChunkMap,
 } from "@/lib/mockAI";
+import { mockCompare } from "@/lib/mockCompare";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -38,7 +39,9 @@ type Task =
   | "concepts"
   | "question"
   | "map"
-  | "reduce_summary";
+  | "reduce_summary"
+  | "compare"
+  | "compare_verify";
 
 const ALLOWED_TASKS = new Set<Task>([
   "beliefs",
@@ -48,12 +51,24 @@ const ALLOWED_TASKS = new Set<Task>([
   "question",
   "map",
   "reduce_summary",
+  "compare",
+  "compare_verify",
 ]);
 
 const MAX_INPUT_CHARS = 50_000;
 const MAX_MODEL_CHARS = 12_000;
 const MAX_SUMMARIES = 60;
+const MAX_EVIDENCE = 60;
 const REQUEST_TIMEOUT_MS = 25_000;
+
+/** A lightweight evidence item as received by the compare task. */
+interface CompareEvidence {
+  id: string;
+  group: string;
+  kind: string;
+  text: string;
+  page?: number;
+}
 
 interface AnthropicTextBlock {
   type: string;
@@ -68,6 +83,13 @@ interface AiInput {
   text: string;
   question: string;
   summaries: string[];
+  // ---- comparison (LIFEOS-010) ----
+  evidence: CompareEvidence[];
+  title: string;
+  sourcesCompared: string[];
+  coverageNote: string;
+  /** The draft comparison result to review (compare_verify only). */
+  draft: string;
 }
 
 function rawText(data: AnthropicResponse): string {
@@ -145,9 +167,78 @@ function parseMap(raw: string, text: string): ChunkMap {
   };
 }
 
+function evidenceBlock(evidence: CompareEvidence[]): string {
+  return evidence
+    .map((e) => {
+      const prov = [e.group, e.kind, e.page != null ? `p.${e.page}` : ""].filter(Boolean).join("; ");
+      return `[${e.id}] (${prov}) "${e.text.replace(/\s+/g, " ").slice(0, 600)}"`;
+    })
+    .join("\n");
+}
+
+function comparePrompt(input: AiInput): string {
+  return [
+    "You are comparing 2–5 intellectual materials for a single reader.",
+    "Use ONLY the evidence items below, and cite them by id (e.g. E1, E4).",
+    "",
+    "RULES:",
+    "- Every agreement, disagreement, assumption, unresolved tension,",
+    "  relation-to-belief, and strongest-evidence entry MUST cite one or more",
+    "  evidence ids that appear below. NEVER cite an id that is not listed, and",
+    "  never state a conclusion you cannot ground in the evidence.",
+    "- Do NOT invent quotes, claims, or facts absent from the evidence.",
+    "- Preserve genuine differences. Do NOT declare distinct traditions",
+    "  identical or interchangeable. Use cautious language: \"resembles\",",
+    "  \"may parallel\", \"differs because\", \"under this interpretation\".",
+    "- Classify each disagreement's \"kind\" as exactly one of: logical,",
+    "  practical, definitional, level_of_analysis, historical, ambiguity.",
+    "  Not every difference is a contradiction.",
+    "",
+    "Return ONLY a JSON object with keys: title (string), question (string),",
+    "sourcesCompared (string[]), sharedConcepts (string[]),",
+    "agreements ({statement, evidenceIds[]}[]),",
+    "disagreements ({statement, kind, evidenceIds[]}[]),",
+    "terminologyDifferences ({term, note, evidenceIds[]}[]),",
+    "assumptions ({statement, evidenceIds[]}[]),",
+    "strongestEvidence ({position, evidenceIds[]}[]),",
+    "unresolvedTensions ({statement, evidenceIds[]}[]),",
+    "questionsForUser (string[]),",
+    "relationToBeliefs ({statement, evidenceIds[]}[]),",
+    "limitations (string[]), coverageNote (string).",
+    "",
+    `Question: ${input.question || "Where do these sources agree, disagree, and use terms differently?"}`,
+    `Coverage note: ${input.coverageNote}`,
+    "",
+    "Evidence:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
+function verifyPrompt(input: AiInput): string {
+  return [
+    "Review this DRAFT comparison for problems. Return ONLY a JSON object:",
+    '  { "cautions": string[], "removeStatements": string[] }',
+    "- cautions: brief warnings about false equivalence, overreach, flattened",
+    "  distinctions, or conclusions stronger than the evidence supports.",
+    "- removeStatements: EXACT statement strings from the draft that are not",
+    "  supported by the listed evidence and should be removed.",
+    "Valid evidence ids: " + input.evidence.map((e) => e.id).join(", "),
+    "",
+    "Evidence:",
+    evidenceBlock(input.evidence),
+    "",
+    "Draft comparison JSON:",
+    input.draft.slice(0, MAX_MODEL_CHARS),
+  ].join("\n");
+}
+
 function promptFor(input: AiInput): string {
   const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (input.task) {
+    case "compare":
+      return comparePrompt(input);
+    case "compare_verify":
+      return verifyPrompt(input);
     case "summary":
       return `Summarize the following in 2–4 sentences, plainly, no preamble.\n\n${src}`;
     case "quotes":
@@ -201,6 +292,16 @@ function mockFor(input: AiInput): unknown {
       return mockMapChunk(input.text);
     case "reduce_summary":
       return mockReduceSummary(input.summaries);
+    case "compare":
+      return mockCompare({
+        evidence: input.evidence,
+        question: input.question,
+        title: input.title || "Comparison",
+        sourcesCompared: input.sourcesCompared,
+        coverageNote: input.coverageNote,
+      });
+    case "compare_verify":
+      return { cautions: [], removeStatements: [] };
     case "beliefs":
     default:
       return mockProposals(input.text);
@@ -218,6 +319,11 @@ function parseFor(input: AiInput, raw: string): unknown {
       return parseStringArray(raw);
     case "map":
       return parseMap(raw, input.text);
+    case "compare":
+    case "compare_verify":
+      // Return the raw parsed object; strict validation happens client-side
+      // (lib/comparison) where the full evidence set is available.
+      return JSON.parse(jsonSlice(raw, "{"));
     case "beliefs":
     default: {
       const claims = parseClaims(raw, input.text);
@@ -225,6 +331,11 @@ function parseFor(input: AiInput, raw: string): unknown {
       return claims;
     }
   }
+}
+
+function maxTokensFor(task: Task): number {
+  // Comparison output is a large structured object; give it more room.
+  return task === "compare" ? 3072 : task === "compare_verify" ? 1024 : 1024;
 }
 
 async function callAnthropic(key: string, input: AiInput): Promise<unknown> {
@@ -241,7 +352,7 @@ async function callAnthropic(key: string, input: AiInput): Promise<unknown> {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1024,
+        max_tokens: maxTokensFor(input.task),
         messages: [{ role: "user", content: promptFor(input) }],
       }),
       signal: controller.signal,
@@ -262,6 +373,11 @@ export async function POST(request: Request) {
       text?: unknown;
       question?: unknown;
       summaries?: unknown;
+      evidence?: unknown;
+      title?: unknown;
+      sourcesCompared?: unknown;
+      coverageNote?: unknown;
+      draft?: unknown;
     };
     const t = typeof body.task === "string" ? (body.task as Task) : "beliefs";
     if (!ALLOWED_TASKS.has(t)) {
@@ -277,12 +393,38 @@ export async function POST(request: Request) {
             .map((s) => s.trim())
             .slice(0, MAX_SUMMARIES)
         : [],
+      evidence: Array.isArray(body.evidence)
+        ? body.evidence
+            .filter(
+              (e): e is CompareEvidence =>
+                !!e && typeof (e as CompareEvidence).id === "string" && typeof (e as CompareEvidence).text === "string",
+            )
+            .map((e) => ({
+              id: String(e.id).slice(0, 12),
+              group: String(e.group ?? "").slice(0, 200),
+              kind: String(e.kind ?? "").slice(0, 40),
+              text: String(e.text).slice(0, 2_000),
+              page: typeof e.page === "number" ? e.page : undefined,
+            }))
+            .slice(0, MAX_EVIDENCE)
+        : [],
+      title: (typeof body.title === "string" ? body.title : "").slice(0, 300).trim(),
+      sourcesCompared: Array.isArray(body.sourcesCompared)
+        ? body.sourcesCompared.filter((s): s is string => typeof s === "string").map((s) => s.trim()).slice(0, 5)
+        : [],
+      coverageNote: (typeof body.coverageNote === "string" ? body.coverageNote : "").slice(0, 500).trim(),
+      draft: (typeof body.draft === "string" ? body.draft : "").slice(0, MAX_INPUT_CHARS),
     };
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
 
-  const hasInput = input.task === "reduce_summary" ? input.summaries.length > 0 : input.text.length > 0;
+  const hasInput =
+    input.task === "reduce_summary"
+      ? input.summaries.length > 0
+      : input.task === "compare" || input.task === "compare_verify"
+        ? input.evidence.length > 0
+        : input.text.length > 0;
   if (!hasInput) {
     return NextResponse.json({ result: mockFor(input), source: "mock" });
   }
