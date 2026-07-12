@@ -51,6 +51,7 @@ function normalize(partial: Partial<StoreState> | null): StoreState {
     feedback: partial?.feedback ?? [],
     comparisons: partial?.comparisons ?? [],
     inquiries: partial?.inquiries ?? [],
+    megathreads: partial?.megathreads ?? [],
   };
 }
 

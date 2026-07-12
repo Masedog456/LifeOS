@@ -20,10 +20,14 @@ import type {
   JudgmentEntry,
   KnowledgeChunk,
   KnowledgeSource,
+  Megathread,
+  MegathreadStatus,
   ProcessingState,
   Proposal,
   RevisionEntry,
   StoreState,
+  ThreadMemberRef,
+  ThreadSynthesisData,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
@@ -38,6 +42,7 @@ const EMPTY_STATE: StoreState = {
   feedback: [],
   comparisons: [],
   inquiries: [],
+  megathreads: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -109,6 +114,15 @@ export function hydrate() {
           judgments: asArray<Inquiry["judgments"][number]>(i?.judgments),
           history: asArray<Inquiry["history"][number]>(i?.history),
         })),
+        megathreads: asArray<Megathread>(parsed.megathreads).map((t) => ({
+          ...t,
+          members: asArray<ThreadMemberRef>(t?.members),
+          pinned: asArray<string>(t?.pinned),
+          excluded: asArray<string>(t?.excluded),
+          unresolvedQuestions: asArray<Megathread["unresolvedQuestions"][number]>(t?.unresolvedQuestions),
+          judgments: asArray<Megathread["judgments"][number]>(t?.judgments),
+          revisions: asArray<Megathread["revisions"][number]>(t?.revisions),
+        })),
       };
       emit();
     }
@@ -120,7 +134,7 @@ export function hydrate() {
 /** Wipe all data (local + remote, if configured). */
 export function resetStore() {
   clearState();
-  setState({ captures: [], proposals: [], beliefs: [], sources: [], feedback: [], comparisons: [], inquiries: [] });
+  setState({ captures: [], proposals: [], beliefs: [], sources: [], feedback: [], comparisons: [], inquiries: [], megathreads: [] });
 }
 
 /** Record user feedback on a surfaced retrieval record (append-only). */
@@ -564,4 +578,156 @@ export function setInquiryStatus(inquiryId: string, status: InquiryStatus): void
 
 export function inquiryById(s: StoreState, inquiryId: string): Inquiry | undefined {
   return s.inquiries.find((i) => i.id === inquiryId);
+}
+
+// ---------- Megathread actions (LIFEOS-012) ----------
+
+export function createMegathread(fields: {
+  title: string;
+  description?: string;
+  seedType: Megathread["seedType"];
+  seedId?: string;
+  seedLabel?: string;
+  members?: ThreadMemberRef[];
+}): string {
+  const at = now();
+  const thread: Megathread = {
+    id: id(),
+    title: fields.title.trim() || "Untitled thread",
+    description: fields.description?.trim() || undefined,
+    status: "active",
+    seedType: fields.seedType,
+    seedId: fields.seedId,
+    seedLabel: fields.seedLabel,
+    members: fields.members ?? [],
+    pinned: [],
+    excluded: [],
+    unresolvedQuestions: [],
+    judgments: [],
+    revisions: [{ at, note: "Thread created" }],
+    createdAt: at,
+    updatedAt: at,
+  };
+  setState({ ...state, megathreads: [thread, ...state.megathreads] });
+  return thread.id;
+}
+
+function patchThread(threadId: string, patch: (t: Megathread) => Megathread, logNote?: string): void {
+  const at = now();
+  setState({
+    ...state,
+    megathreads: state.megathreads.map((t) => {
+      if (t.id !== threadId) return t;
+      const next = patch(t);
+      return {
+        ...next,
+        updatedAt: at,
+        revisions: logNote ? [...t.revisions, { at, note: logNote }] : next.revisions,
+      };
+    }),
+  });
+}
+
+export function updateMegathread(thread: Megathread): void {
+  patchThread(thread.id, () => thread);
+}
+
+export function setThreadFields(
+  threadId: string,
+  fields: Partial<Pick<Megathread, "title" | "description" | "notes">>,
+): void {
+  patchThread(threadId, (t) => ({ ...t, ...fields }));
+}
+
+export function setThreadStatus(threadId: string, status: MegathreadStatus): void {
+  patchThread(threadId, (t) => ({ ...t, status }), `Marked ${status}`);
+}
+
+export function addThreadMember(threadId: string, ref: ThreadMemberRef): void {
+  patchThread(
+    threadId,
+    (t) =>
+      t.members.some((m) => m.type === ref.type && m.id === ref.id)
+        ? t
+        : { ...t, members: [...t.members, { ...ref, at: now() }], excluded: t.excluded.filter((x) => x !== ref.id) },
+    `Added ${ref.type}`,
+  );
+}
+
+export function removeThreadMember(threadId: string, type: ThreadMemberRef["type"], memberId: string): void {
+  patchThread(threadId, (t) => ({
+    ...t,
+    members: t.members.filter((m) => !(m.type === type && m.id === memberId)),
+    pinned: t.pinned.filter((x) => x !== memberId),
+  }));
+}
+
+/** Exclude a record: remove it as a member and never auto-suggest it again. */
+export function excludeThreadItem(threadId: string, recordId: string): void {
+  patchThread(threadId, (t) => ({
+    ...t,
+    members: t.members.filter((m) => m.id !== recordId),
+    pinned: t.pinned.filter((x) => x !== recordId),
+    excluded: t.excluded.includes(recordId) ? t.excluded : [...t.excluded, recordId],
+  }));
+}
+
+export function toggleThreadPin(threadId: string, memberId: string): void {
+  patchThread(threadId, (t) => ({
+    ...t,
+    pinned: t.pinned.includes(memberId) ? t.pinned.filter((x) => x !== memberId) : [...t.pinned, memberId],
+  }));
+}
+
+export function setThreadSynthesis(
+  threadId: string,
+  synthesis: ThreadSynthesisData,
+  source: "ai" | "mock" | "user",
+  evidence?: Megathread["synthesisEvidence"],
+): void {
+  patchThread(
+    threadId,
+    (t) => ({ ...t, synthesis, synthesisSource: source, synthesisEvidence: evidence ?? t.synthesisEvidence }),
+    source === "user" ? "Synthesis rewritten by you" : "Synthesis regenerated",
+  );
+}
+
+export function addThreadQuestion(threadId: string, text: string): void {
+  const q = text.trim();
+  if (!q) return;
+  patchThread(threadId, (t) =>
+    t.unresolvedQuestions.some((x) => x.text === q)
+      ? t
+      : { ...t, unresolvedQuestions: [...t.unresolvedQuestions, { text: q, resolved: false }] },
+  );
+}
+
+export function toggleThreadQuestion(threadId: string, index: number): void {
+  patchThread(threadId, (t) => ({
+    ...t,
+    unresolvedQuestions: t.unresolvedQuestions.map((q, i) => (i === index ? { ...q, resolved: !q.resolved } : q)),
+  }));
+}
+
+export function judgeThreadInsight(
+  threadId: string,
+  insightRef: string,
+  decision: ComparisonDecision,
+  note?: string,
+): void {
+  const at = now();
+  patchThread(threadId, (t) => ({
+    ...t,
+    judgments: [...t.judgments, { insightRef, decision, at, ...(note ? { note } : {}) }],
+  }));
+}
+
+export function megathreadById(s: StoreState, threadId: string): Megathread | undefined {
+  return s.megathreads.find((t) => t.id === threadId);
+}
+
+/** Existing threads seeded by the same record — used to warn about duplicates. */
+export function threadsForSeed(s: StoreState, seedType: Megathread["seedType"], seedId?: string): Megathread[] {
+  if (!seedId) return [];
+  return s.megathreads.filter((t) => t.seedType === seedType && t.seedId === seedId);
 }

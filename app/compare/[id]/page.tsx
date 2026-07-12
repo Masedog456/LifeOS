@@ -27,12 +27,20 @@ export default function ComparisonDetailPage() {
         <Link href="/compare" className="text-sm text-zinc-500 underline-offset-4 hover:underline">
           ← Compare
         </Link>
-        <Link
-          href={`/inquiry?comparison=${comparison.id}&q=${encodeURIComponent(comparison.question)}`}
-          className="text-sm text-zinc-500 underline-offset-4 hover:underline"
-        >
-          Investigate this question →
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            href={`/inquiry?comparison=${comparison.id}&q=${encodeURIComponent(comparison.question)}`}
+            className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+          >
+            Investigate this question →
+          </Link>
+          <Link
+            href={`/threads?seedType=comparison&seedId=${comparison.id}&title=${encodeURIComponent(comparison.title)}`}
+            className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+          >
+            Create thread →
+          </Link>
+        </div>
       </div>
       <div className="mt-4">
         <ComparisonResult comparison={comparison} />

@@ -211,6 +211,49 @@ decides what the user must believe, and never changes the Constitution.
   ("investigate this question"), Constitution ("challenge this belief"),
   Reader ("investigate this passage").
 
+## Megathreads & longitudinal knowledge (LIFEOS-012 — implemented)
+
+Megathreads are **implemented** as living, provenance-grounded VIEWS over
+existing records — not folders and not copies. A thread shows how a topic,
+question, or belief develops across sources, captures, comparisons,
+inquiries, judgments, and revisions over time. No graph UI, no autonomous
+agents, and it never changes the Constitution.
+
+- **Record** (`Megathread`). Stores a seed (type + id + label), human
+  title/description/status, **member references** (pointers to existing
+  records — no source text is duplicated), curation state (`pinned`,
+  `excluded`), a cautious synthesis + its evidence packet, unresolved
+  questions, notes, append-only `judgments` and a `revisions` change log.
+- **Membership** (`lib/megathread/membership.ts`). Deterministic and
+  EXPLAINABLE: `initialMembers` seeds a thread from a belief/comparison/
+  inquiry/source and its direct inputs; `candidateMembers` scans records for
+  retrieval relatedness (LIFEOS-009 `search`) plus structural links (shared
+  source/belief ids in comparisons/inquiries), each with a human-readable
+  reason. AI never silently adds members; beliefs are only ever added by
+  explicit user action.
+- **Timeline** (`lib/megathread/timeline.ts`). A chronological READ-MODEL
+  built at render time from existing records — never stored, so it never
+  rewrites history. Each event keeps provenance (type, date, source, page,
+  human/AI origin, relationship to the thread). Excluded members are skipped.
+- **Synthesis** (`lib/megathread/run.ts`, `synthesis.ts`). Capped evidence
+  packet (reuses the inquiry evidence builder + appends inquiry findings) →
+  ONE `thread_synthesis` call on `/api/ai` → strict validation dropping any
+  point whose evidence ids aren't in the packet (flagged, never grounded).
+  Belief-evolution and recent-changes are computed deterministically from the
+  timeline and injected, so they are always accurate. The mock
+  (`lib/mockThreadSynthesis.ts`) produces an evidence-cited synthesis offline.
+  Regeneration is explicit; nothing runs in the background.
+- **Curation + judgment** (`app/threads/[id]`,
+  `components/Thread{Timeline,Synthesis}.tsx`). Add/remove/pin/exclude
+  members, edit title/description/notes, rewrite the current understanding,
+  add/resolve questions, archive. Each synthesis insight → Accept into the
+  Belief Inbox / Question / Reject. The Constitution is never touched
+  automatically.
+- **Persistence.** One row (`megathreads`, migration `0007_megathreads.sql`)
+  with jsonb `members`/`pinned`/`excluded`/`synthesis`/`revisions`, own-rows
+  RLS. Entry points: Nav, Constitution ("create Megathread"), Reader ("add to
+  Megathread"), Compare/Inquiry ("create thread").
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

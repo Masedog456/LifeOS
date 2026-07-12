@@ -533,6 +533,117 @@ export interface Inquiry {
   updatedAt: ISO;
 }
 
+// ---------- Megathreads & longitudinal knowledge (LIFEOS-012) ----------
+
+export type MegathreadStatus = "active" | "dormant" | "archived";
+
+export type MegathreadSeedType =
+  | "concept"
+  | "belief"
+  | "question"
+  | "source"
+  | "comparison"
+  | "inquiry"
+  | "manual";
+
+export type ThreadMemberType =
+  | "source"
+  | "capture"
+  | "belief"
+  | "proposal"
+  | "comparison"
+  | "inquiry";
+
+/** A member points to an existing record — no source text is duplicated. */
+export interface ThreadMemberRef {
+  type: ThreadMemberType;
+  id: string;
+  /** Whether the item was auto-suggested (deterministically) or user-added. */
+  addedBy: "auto" | "user";
+  /** Explainable reason it was associated (deterministic). */
+  reason?: string;
+  at?: ISO;
+}
+
+export type TimelineItemType =
+  | "capture"
+  | "source_added"
+  | "quote"
+  | "proposal"
+  | "judgment"
+  | "revision"
+  | "comparison"
+  | "inquiry"
+  | "provisional_conclusion"
+  | "belief_status";
+
+/** A derived, read-only timeline event (built from existing records, never stored). */
+export interface TimelineItem {
+  id: string;
+  type: TimelineItemType;
+  at: ISO;
+  title: string;
+  detail?: string;
+  origin?: "human" | "ai" | "mock";
+  sourceId?: string;
+  beliefId?: string;
+  page?: number;
+  href?: string;
+  /** Relationship to the thread seed / why it belongs. */
+  relation?: string;
+}
+
+/** Cautious thread synthesis (Phase 5). Substantive points cite evidence ids. */
+export interface ThreadSynthesisData {
+  currentUnderstanding: string;
+  majorPositions: DialecticPoint[];
+  agreements: ComparisonPoint[];
+  disagreements: ComparisonPoint[];
+  terminologyDifferences: TerminologyDifference[];
+  beliefEvolution: string[];
+  strongestSupport: PositionEvidence[];
+  strongestChallenge: PositionEvidence[];
+  unresolvedQuestions: string[];
+  recentChanges: string[];
+  limitations: string[];
+  coverageNote: string;
+  flagged?: string[];
+}
+
+export interface ThreadQuestion {
+  text: string;
+  resolved: boolean;
+}
+
+/** A living, provenance-grounded timeline of understanding (not a folder). */
+export interface Megathread {
+  id: string;
+  title: string;
+  description?: string;
+  status: MegathreadStatus;
+  seedType: MegathreadSeedType;
+  seedId?: string;
+  seedLabel?: string;
+  /** Explicit member references (auto-suggested + user-added). */
+  members: ThreadMemberRef[];
+  /** Member ids featured/pinned (also drives featured order). */
+  pinned: string[];
+  /** Record ids the user explicitly excluded (never re-suggested). */
+  excluded: string[];
+  synthesis?: ThreadSynthesisData;
+  synthesisSource?: "ai" | "mock" | "user";
+  /** The evidence packet the current synthesis cites. */
+  synthesisEvidence?: EvidenceItem[];
+  unresolvedQuestions: ThreadQuestion[];
+  notes?: string;
+  /** Append-only human judgments on synthesis insights. */
+  judgments: ComparisonJudgment[];
+  /** Append-only change log (never rewritten). */
+  revisions: { at: ISO; note: string }[];
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -541,4 +652,5 @@ export interface StoreState {
   feedback: FeedbackEntry[];
   comparisons: Comparison[];
   inquiries: Inquiry[];
+  megathreads: Megathread[];
 }

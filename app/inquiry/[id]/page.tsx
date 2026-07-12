@@ -68,7 +68,15 @@ export default function InquiryDetailPage() {
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
-      <Link href="/inquiry" className="text-sm text-zinc-500 underline-offset-4 hover:underline">← Inquiry</Link>
+      <div className="flex items-center justify-between gap-3">
+        <Link href="/inquiry" className="text-sm text-zinc-500 underline-offset-4 hover:underline">← Inquiry</Link>
+        <Link
+          href={`/threads?seedType=inquiry&seedId=${inquiry.id}&title=${encodeURIComponent(inquiry.question.slice(0, 50))}`}
+          className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+        >
+          Create thread →
+        </Link>
+      </div>
 
       <div className="mt-4">
         <DialecticResult inquiry={inquiry} />

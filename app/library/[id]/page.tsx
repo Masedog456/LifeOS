@@ -444,6 +444,12 @@ export default function ReaderPage() {
             >
               Investigate this passage →
             </Link>
+            <Link
+              href={`/threads?seedType=source&seedId=${id}&title=${encodeURIComponent(source.title)}`}
+              className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              Add to Megathread →
+            </Link>
           </footer>
         </>
       )}

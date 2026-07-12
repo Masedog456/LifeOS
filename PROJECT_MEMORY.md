@@ -24,6 +24,41 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-12
+- **LIFEOS-012 — Megathreads & longitudinal knowledge: implemented.** Living,
+  provenance-grounded VIEWS (not folders, not copies) showing how a topic /
+  question / belief develops across sources, captures, comparisons, inquiries,
+  judgments, and revisions over time. `Megathread` record stores a seed, human
+  title/description/status, **member references** (pointers to existing
+  records — no source text duplicated), curation (`pinned`/`excluded`), a
+  cautious synthesis + its evidence packet, unresolved questions, notes, and
+  append-only `judgments`/`revisions`. Membership (`lib/megathread/
+  membership.ts`) is deterministic + explainable: `initialMembers` seeds from
+  a belief/comparison/inquiry/source + direct inputs; `candidateMembers` adds
+  retrieval-related + structurally-linked records, each with a reason — AI
+  never silently adds, beliefs only by explicit user action. Timeline
+  (`lib/megathread/timeline.ts`) is a chronological READ-MODEL derived at
+  render time (never stored → never rewrites history), each event keeping
+  provenance (type/date/source/page/origin/relation); excluded members
+  skipped. Synthesis (`lib/megathread/run.ts` + `synthesis.ts`): capped
+  evidence packet (reuses inquiry evidence + inquiry findings) → **one**
+  `thread_synthesis` call on the single `/api/ai` route → strict validation
+  dropping points citing invalid evidence (flagged); belief-evolution +
+  recent-changes computed deterministically from the timeline and injected
+  (always accurate); mock (`lib/mockThreadSynthesis.ts`) works offline;
+  regeneration explicit, no background regen. Human curation
+  (`app/threads/[id]`): add/remove/pin/exclude members, edit title/desc/notes,
+  rewrite the current understanding, add/resolve questions, archive; each
+  synthesis insight → Accept into the Belief Inbox / Question / Reject;
+  Constitution never auto-changes. Persistence: `megathreads` state + adapters
+  + additive migration `0007_megathreads.sql` (jsonb row, own-rows RLS,
+  rerunnable; migrations 0001–0006 untouched). New `/threads` workspace +
+  `/threads/[id]`; entry points from Nav, Constitution, Reader, Compare,
+  Inquiry. Verified: **21/21 megathread checks** + **22/22 dialectic + 15/15
+  comparison + 9/9 regression + 12/12 long-source + 16/16 PDF + 11/11
+  retrieval**, zero runtime errors; `lint`/`build` green. No graph UI, agents,
+  or auto Constitution changes; still one AI route. Supabase sync/RLS/cross-
+  device of `megathreads` are code-complete but credential-pending.
+- Date: 2026-07-12
 - **LIFEOS-011 — Dialectical intelligence: implemented.** A dialectical
   inquiry workspace that investigates one question through evidence,
   arguments, objections, and unresolved tensions — without letting AI decide
@@ -903,3 +938,31 @@ scope or order.
   device) is code-complete but credential-pending. No graph UI, autonomous
   agents, auto Constitution changes, or new AI routes beyond the single
   `/api/ai`.
+- 2026-07-12 — Implemented **LIFEOS-012 megathreads & longitudinal knowledge**.
+  New: `lib/megathread/membership.ts` (deterministic, explainable seed +
+  candidate members), `lib/megathread/timeline.ts` (chronological read-model,
+  never stored), `lib/megathread/evidence.ts` (capped packet reusing inquiry
+  evidence + inquiry findings), `lib/megathread/synthesis.ts` (strict
+  validation — drops ungrounded points, flags flattening), `lib/megathread/
+  run.ts` (orchestrator: one `thread_synthesis` call + deterministic belief-
+  evolution/recent-changes injection), `lib/mockThreadSynthesis.ts`,
+  `components/ThreadTimeline.tsx`, `components/ThreadSynthesis.tsx`,
+  `app/threads/page.tsx` + `app/threads/[id]/page.tsx`,
+  `supabase/migrations/0007_megathreads.sql`. Extended `types/mvp.ts`
+  (`Megathread`, `ThreadMemberRef`, `TimelineItem`, `ThreadSynthesisData`,
+  `MegathreadStatus`/`SeedType`, `StoreState.megathreads`),
+  `app/api/ai/route.ts` (`thread_synthesis` task, 3072 max_tokens),
+  `lib/aiClient.ts` (`synthesizeThread`), `lib/mvpStore.ts` (megathreads state
+  + create/update/member-curation/synthesis/questions/judgment actions),
+  `lib/persistence.ts`, `lib/adapters/localAdapter.ts`,
+  `lib/adapters/supabaseAdapter.ts` (load/save/delete + row mappers). Entry
+  points added to `components/Nav.tsx`, `app/constitution/page.tsx`,
+  `app/library/[id]/page.tsx`, `app/compare/[id]/page.tsx`,
+  `app/inquiry/[id]/page.tsx`. Threads store only references (no text copies);
+  timeline is derived; synthesis insights flow into the Belief Inbox; the
+  Constitution is never changed automatically. Verified 21/21 megathread +
+  22/22 dialectic + 15/15 comparison + 9/9 regression + 12/12 long-source +
+  16/16 PDF + 11/11 retrieval checks, zero runtime errors; `lint`=0,
+  `build`=0. Supabase persistence of `megathreads` (sync/RLS/cross-device) is
+  code-complete but credential-pending. No graph UI, autonomous agents, auto
+  Constitution changes, or new AI routes beyond the single `/api/ai`.

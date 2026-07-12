@@ -17,6 +17,7 @@ import {
 } from "@/lib/mockAI";
 import { mockCompare } from "@/lib/mockCompare";
 import { mockDialectic } from "@/lib/mockDialectic";
+import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
 import type { EvidenceItem } from "@/types/mvp";
 
 export type AiSource = "ai" | "mock";
@@ -140,5 +141,15 @@ export function verifyDialectic(evidence: EvidenceItem[], draft: unknown) {
   return call<{ cautions?: string[]; removeStatements?: string[] }>(
     { task: "dialectic_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
     () => ({ cautions: [], removeStatements: [] }),
+  );
+}
+
+// ---------- Megathreads (LIFEOS-012) ----------
+
+/** One structured thread-synthesis call. Returns the RAW object (validated by caller). */
+export function synthesizeThread(args: { evidence: EvidenceItem[]; title: string; coverageNote: string }) {
+  return call<unknown>(
+    { task: "thread_synthesis", evidence: toWire(args.evidence), title: args.title, coverageNote: args.coverageNote },
+    () => mockThreadSynthesis({ evidence: args.evidence, title: args.title, coverageNote: args.coverageNote }),
   );
 }

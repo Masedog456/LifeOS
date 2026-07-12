@@ -18,6 +18,7 @@ import type {
   Capture,
   Comparison,
   Inquiry,
+  Megathread,
   JudgmentEntry,
   KnowledgeChunk,
   KnowledgeSource,
@@ -46,7 +47,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -58,6 +59,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("retrieval_feedback").select("*"),
         this.client.from("comparisons").select("*").order("created_at", { ascending: false }),
         this.client.from("inquiries").select("*").order("created_at", { ascending: false }),
+        this.client.from("megathreads").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -70,7 +72,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       quotes.error ||
       feedback.error ||
       comparisons.error ||
-      inquiries.error;
+      inquiries.error ||
+      megathreads.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -94,6 +97,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       })),
       comparisons: (comparisons.data ?? []).map(rowToComparison),
       inquiries: (inquiries.data ?? []).map(rowToInquiry),
+      megathreads: (megathreads.data ?? []).map(rowToMegathread),
     };
   }
 
@@ -135,6 +139,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     }
     if (state.inquiries.length) {
       await this.throwing(this.client.from("inquiries").upsert(state.inquiries.map(inquiryToRow)));
+    }
+    if (state.megathreads.length) {
+      await this.throwing(this.client.from("megathreads").upsert(state.megathreads.map(megathreadToRow)));
     }
     this.lastState = "synced";
     this.lastError = undefined;
@@ -198,6 +205,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("megathreads").delete().eq("user_id", uid));
     await this.throwing(this.client.from("inquiries").delete().eq("user_id", uid));
     await this.throwing(this.client.from("comparisons").delete().eq("user_id", uid));
     await this.throwing(this.client.from("beliefs").delete().eq("user_id", uid));
@@ -432,6 +440,54 @@ function rowToInquiry(r: any): Inquiry {
     status: (r.status ?? "open") as Inquiry["status"],
     provisionalConclusion: r.provisional_conclusion ?? undefined,
     judgments: (r.judgments ?? []) as Inquiry["judgments"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function megathreadToRow(t: Megathread) {
+  return {
+    id: t.id,
+    title: t.title,
+    description: t.description ?? null,
+    status: t.status,
+    seed_type: t.seedType,
+    seed_id: t.seedId ?? null,
+    seed_label: t.seedLabel ?? null,
+    members: t.members,
+    pinned: t.pinned,
+    excluded: t.excluded,
+    synthesis: t.synthesis ?? null,
+    synthesis_source: t.synthesisSource ?? null,
+    synthesis_evidence: t.synthesisEvidence ?? null,
+    unresolved_questions: t.unresolvedQuestions,
+    notes: t.notes ?? null,
+    judgments: t.judgments,
+    revisions: t.revisions,
+    created_at: t.createdAt,
+    updated_at: t.updatedAt,
+  };
+}
+
+function rowToMegathread(r: any): Megathread {
+  return {
+    id: r.id,
+    title: r.title,
+    description: r.description ?? undefined,
+    status: (r.status ?? "active") as Megathread["status"],
+    seedType: (r.seed_type ?? "manual") as Megathread["seedType"],
+    seedId: r.seed_id ?? undefined,
+    seedLabel: r.seed_label ?? undefined,
+    members: (r.members ?? []) as Megathread["members"],
+    pinned: (r.pinned ?? []) as string[],
+    excluded: (r.excluded ?? []) as string[],
+    synthesis: (r.synthesis ?? undefined) as Megathread["synthesis"],
+    synthesisSource: (r.synthesis_source ?? undefined) as Megathread["synthesisSource"],
+    synthesisEvidence: (r.synthesis_evidence ?? undefined) as Megathread["synthesisEvidence"],
+    unresolvedQuestions: (r.unresolved_questions ?? []) as Megathread["unresolvedQuestions"],
+    notes: r.notes ?? undefined,
+    judgments: (r.judgments ?? []) as Megathread["judgments"],
+    revisions: (r.revisions ?? []) as Megathread["revisions"],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

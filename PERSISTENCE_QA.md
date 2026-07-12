@@ -41,7 +41,15 @@
    rerunnable; it does not touch migrations 0001–0005, existing rows, other
    tables, or their RLS. Inquiry sends only a small, capped evidence packet to
    the AI route — never whole sources.
-7. **Project Settings → API**: copy the **Project URL** and the **anon
+7. Then run `supabase/migrations/0007_megathreads.sql` (LIFEOS-012 — adds the
+   `megathreads` table: one row per thread with jsonb `members`/`pinned`/
+   `excluded`/`synthesis`/`unresolved_questions`/`judgments`/`revisions`,
+   own-rows RLS with full CRUD so curation + append-only judgments/revisions
+   can be added to an existing row). Additive and rerunnable; it does not
+   touch migrations 0001–0006, existing rows, other tables, or their RLS.
+   Threads store only references to existing records — never copies of source
+   text — and the timeline is a read-model derived at render time.
+8. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -129,6 +137,15 @@ changes runtime behavior.
       an added source → prior result kept in append-only history + conclusion
       preserved; 5-source cap + verification confirm; persistence after refresh.
       (22/22 automated checks, mock mode.)
+- [x] **Megathreads (LIFEOS-012):** seed a thread from a belief / comparison /
+      inquiry (auto-members include the seed + its direct inputs); candidate
+      membership is deterministic + explainable; include/exclude items;
+      timeline is chronological with page/source provenance and shows belief
+      evolution; comparisons/inquiries appear in context; generate a synthesis
+      that cites valid evidence chips; unsupported synthesis points dropped +
+      flagged; accept an insight → Belief Inbox (Constitution unchanged);
+      thread + synthesis persist after refresh. (21/21 automated checks, mock
+      mode.)
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
@@ -172,6 +189,9 @@ changes runtime behavior.
 - [ ] Saved inquiries sync: create an inquiry (and evolve it) in Browser A →
       it appears in Browser B with its full append-only history. A second
       account cannot read it (RLS on `inquiries`).
+- [ ] Megathreads sync: create a thread (with members + a synthesis) in
+      Browser A → it appears in Browser B with its members and synthesis. A
+      second account cannot read it (RLS on `megathreads`).
 
 ## C. Real Anthropic (CREDENTIAL-DEPENDENT, pending)
 

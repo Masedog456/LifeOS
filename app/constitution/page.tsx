@@ -125,6 +125,12 @@ function BeliefRow({ belief }: { belief: Belief }) {
             >
               Challenge this belief →
             </Link>
+            <Link
+              href={`/threads?seedType=belief&seedId=${belief.id}&title=${encodeURIComponent(belief.theme || belief.text.slice(0, 40))}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Create Megathread →
+            </Link>
           </div>
 
           {/* Related evidence — collapsed, never auto-resolving */}

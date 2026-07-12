@@ -29,6 +29,7 @@ import {
 } from "@/lib/mockAI";
 import { mockCompare } from "@/lib/mockCompare";
 import { mockDialectic } from "@/lib/mockDialectic";
+import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -44,7 +45,8 @@ type Task =
   | "compare"
   | "compare_verify"
   | "dialectic"
-  | "dialectic_verify";
+  | "dialectic_verify"
+  | "thread_synthesis";
 
 const ALLOWED_TASKS = new Set<Task>([
   "beliefs",
@@ -58,6 +60,7 @@ const ALLOWED_TASKS = new Set<Task>([
   "compare_verify",
   "dialectic",
   "dialectic_verify",
+  "thread_synthesis",
 ]);
 
 const MAX_INPUT_CHARS = 50_000;
@@ -282,6 +285,36 @@ function dialecticPrompt(input: AiInput): string {
   ].join("\n");
 }
 
+function threadSynthesisPrompt(input: AiInput): string {
+  return [
+    "You are writing a cautious SYNTHESIS of a longitudinal knowledge thread",
+    `titled "${input.title}". Summarize how the user's understanding has`,
+    "developed across the materials — you do NOT tell them what to believe.",
+    "Use ONLY the evidence items below, and cite them by id (e.g. E1, E4).",
+    "",
+    "RULES:",
+    "- Every position, agreement, disagreement, and strongest-support/challenge",
+    "  entry MUST cite evidence ids that appear below. Never cite an id not listed.",
+    "- Do NOT invent evidence, positions, or quotations.",
+    "- Preserve genuine differences; do NOT declare distinct sources identical.",
+    "- Be cautious and provisional. This is a living view, not a verdict.",
+    "",
+    "Return ONLY a JSON object with keys: currentUnderstanding (string),",
+    "majorPositions ({statement, evidenceIds[]}[]),",
+    "agreements ({statement, evidenceIds[]}[]),",
+    "disagreements ({statement, evidenceIds[]}[]),",
+    "terminologyDifferences ({term, note, evidenceIds[]}[]),",
+    "strongestSupport ({position, evidenceIds[]}[]),",
+    "strongestChallenge ({position, evidenceIds[]}[]),",
+    "unresolvedQuestions (string[]), limitations (string[]), coverageNote (string).",
+    "",
+    `Coverage note: ${input.coverageNote}`,
+    "",
+    "Evidence:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
 function promptFor(input: AiInput): string {
   const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (input.task) {
@@ -292,6 +325,8 @@ function promptFor(input: AiInput): string {
       return verifyPrompt(input);
     case "dialectic":
       return dialecticPrompt(input);
+    case "thread_synthesis":
+      return threadSynthesisPrompt(input);
     case "summary":
       return `Summarize the following in 2–4 sentences, plainly, no preamble.\n\n${src}`;
     case "quotes":
@@ -362,6 +397,12 @@ function mockFor(input: AiInput): unknown {
         question: input.question,
         coverageNote: input.coverageNote,
       });
+    case "thread_synthesis":
+      return mockThreadSynthesis({
+        evidence: input.evidence,
+        title: input.title || "Thread",
+        coverageNote: input.coverageNote,
+      });
     case "beliefs":
     default:
       return mockProposals(input.text);
@@ -383,8 +424,9 @@ function parseFor(input: AiInput, raw: string): unknown {
     case "compare_verify":
     case "dialectic":
     case "dialectic_verify":
+    case "thread_synthesis":
       // Return the raw parsed object; strict validation happens client-side
-      // (lib/comparison, lib/dialectic) where the full evidence set is available.
+      // (lib/comparison, lib/dialectic, lib/megathread) with the full evidence set.
       return JSON.parse(jsonSlice(raw, "{"));
     case "beliefs":
     default: {
@@ -396,9 +438,9 @@ function parseFor(input: AiInput, raw: string): unknown {
 }
 
 function maxTokensFor(task: Task): number {
-  // Structured comparison/dialectic outputs are large; give them more room.
+  // Structured comparison/dialectic/synthesis outputs are large; more room.
   if (task === "dialectic") return 4096;
-  if (task === "compare") return 3072;
+  if (task === "compare" || task === "thread_synthesis") return 3072;
   return 1024;
 }
 
@@ -483,7 +525,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
 
-  const EVIDENCE_TASKS = new Set<Task>(["compare", "compare_verify", "dialectic", "dialectic_verify"]);
+  const EVIDENCE_TASKS = new Set<Task>(["compare", "compare_verify", "dialectic", "dialectic_verify", "thread_synthesis"]);
   const hasInput =
     input.task === "reduce_summary"
       ? input.summaries.length > 0
