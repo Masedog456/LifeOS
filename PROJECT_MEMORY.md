@@ -23,6 +23,38 @@ pending Product Owner approval).
 
 ## 2. Current Sprint Status
 
+- Date: 2026-07-12
+- **LIFEOS-009 — Intelligent Library retrieval: implemented (deterministic).**
+  Retrieval across every record type (source / summary / concept / quote /
+  chunk / candidate belief / capture / unresolved proposal / belief /
+  earlier revision) with **no embeddings, no pgvector, no AI route, no
+  background jobs** — it runs in-memory in the browser. `lib/retrieval/
+  records.ts` (`buildRecords`) projects the existing store into normalized
+  `RetrievalRecord`s that keep provenance (sourceId/page/href) and are
+  **never persisted** (no large-text duplication). `lib/retrieval/search.ts`
+  ranks with explainable weighted signals — exact phrase (×6), concept
+  overlap (×4), token overlap (×3), title/author (×2), page provenance,
+  belief-status boost, recency (×0.5) — exact + concept above recency; each
+  result carries a human "why it matched" reason and **raw scores are never
+  shown**. Dedup by normalized text + per-source diversity cap.
+  `relatedTo()` powers contextual "what else relates" (limit 5, 1/source).
+  Surfaces: **Library** search grouped by type with provenance/why-matched;
+  **Home** capture resurfacing (async, after save, ≤1 primary + up to 2
+  more, never blocks saving, quiet/dismissible); **Constitution** per-belief
+  related evidence (collapsed, excludes the belief itself, never
+  auto-resolves contradictions); **Reader** "find related from your library"
+  (collapsed, excludes current source). **Feedback** (relevant /
+  not_relevant / dismiss / snooze) persists to the append-only
+  `retrieval_feedback` table (migration `0004_retrieval.sql`, own-rows RLS)
+  and **only re-ranks/filters deterministically** — no ML recommender, no
+  auto belief changes, no cross-user data. Safeguards: limited counts,
+  source diversity, snoozed items hidden until expiry, no gamification.
+  Verified: **11/11 retrieval checks** (resurfacing appears + never blocks
+  save, grouped search, why-matched shown, no raw scores, feedback suppresses
+  the exact item + persists, Constitution/Reader related sections) +
+  **9/9 regression + 12/12 long-source + 16/16 PDF**, zero runtime errors;
+  `lint`/`build` green. Additive migration only; migrations 0001–0003
+  untouched.
 - Date: 2026-07-11
 - **LIFEOS-008 — Real PDF ingestion: implemented.** The `pdfAdapter` seam
   now does genuine **client-side, page-aware pdf.js extraction**
@@ -710,3 +742,30 @@ scope or order.
   9/9 regression + 12/12 long-source, no runtime errors); real-AI/Supabase
   persistence of the new columns remain credential-pending. `lint`=0,
   `build`=0.
+- 2026-07-12 — Implemented **LIFEOS-009 intelligent Library retrieval**,
+  fully **deterministic** (no embeddings, pgvector, AI route, or background
+  jobs). New: `lib/retrieval/records.ts` (`buildRecords` — a transient,
+  never-persisted normalized view over the store, with provenance),
+  `lib/retrieval/search.ts` (`search`/`relatedTo`/`resurfaceLabel` —
+  weighted explainable ranking: exact ×6, concept ×4, token ×3, title ×2,
+  provenance, status boost, recency ×0.5; dedup by normalized text +
+  per-source diversity cap; human "why matched" reason, never raw scores;
+  feedback boosts/suppresses deterministically), `components/
+  RetrievalResults.tsx` (shared results list with provenance + feedback
+  controls), `supabase/migrations/0004_retrieval.sql` (append-only
+  `retrieval_feedback`, own-rows RLS, rerunnable, migrations 0001–0003
+  untouched). Extended `types/mvp.ts` (`RecordType`, `RetrievalRecord`,
+  `FeedbackVerdict`, `FeedbackEntry`, `StoreState.feedback`),
+  `lib/mvpStore.ts` (`feedback` state + `recordFeedback` action),
+  `lib/persistence.ts` + `lib/adapters/localAdapter.ts` +
+  `lib/adapters/supabaseAdapter.ts` (carry/round-trip feedback). Wired into
+  the Library (grouped deep search replacing title-only filter at ≥2 chars),
+  Home (async capture resurfacing that never blocks the save; ≤1 primary +
+  up to 2 more), Constitution (collapsed per-belief related evidence,
+  excludes the belief, no auto contradiction resolution), and Reader
+  (collapsed "find related from your library", excludes current source).
+  Feedback tunes ranking **only** — no ML recommender, no auto belief
+  changes, no cross-user data. Verified 11/11 retrieval + 9/9 regression +
+  12/12 long-source + 16/16 PDF checks, zero runtime errors; `lint`=0,
+  `build`=0. Docs updated (`ARCHITECTURE.md`, `PERSISTENCE_QA.md`,
+  `PROJECT_MEMORY.md`). Still one AI route; no graphs/megathreads/agents.

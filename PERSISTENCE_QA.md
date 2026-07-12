@@ -19,7 +19,14 @@
    additive/rerunnable. **No Supabase Storage bucket is needed:** PDF text
    is extracted client-side and only the text + metadata are stored; the PDF
    binary is never uploaded.
-3. **Project Settings → API**: copy the **Project URL** and the **anon
+4. Then run `supabase/migrations/0004_retrieval.sql` (LIFEOS-009 — adds the
+   append-only `retrieval_feedback` table with its own RLS: own-rows-only
+   select + insert, no update/delete). Additive and rerunnable
+   (`create table if not exists`, guarded policy creation); it does not
+   touch migrations 0001–0003, existing rows, other tables, or their RLS.
+   Retrieval itself is deterministic and in-memory — this table stores
+   **only** the user's relevance feedback, never source text or beliefs.
+5. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)

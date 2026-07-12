@@ -9,6 +9,9 @@ import {
   useStore,
 } from "@/lib/mvpStore";
 import { generateBeliefs } from "@/lib/aiClient";
+import { buildRecords } from "@/lib/retrieval/records";
+import { relatedTo, resurfaceLabel, type RankedResult } from "@/lib/retrieval/search";
+import RetrievalResults from "@/components/RetrievalResults";
 
 export default function Home() {
   const router = useRouter();
@@ -18,9 +21,22 @@ export default function Home() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [resurfaced2, setResurfaced2] = useState<RankedResult[]>([]);
+  const [showMore, setShowMore] = useState(false);
   // Synchronous guard against a double-click double-submitting before the
   // `busy` state has a chance to re-render and disable the buttons.
   const submitting = useRef(false);
+
+  // Retrieval runs AFTER the capture is already saved, and never blocks it.
+  function resurface(raw: string) {
+    try {
+      const related = relatedTo(raw, buildRecords(state), state.feedback, {}).slice(0, 3);
+      setResurfaced2(related);
+      setShowMore(false);
+    } catch {
+      setResurfaced2([]);
+    }
+  }
 
   async function generate(captureId: string, raw: string) {
     // The single AI route, via the shared client (which itself falls back
@@ -53,6 +69,8 @@ export default function Home() {
           ? `Captured. ${count} belief${count === 1 ? "" : "s"} waiting in your Inbox.`
           : "Captured.",
       );
+      // Resurfacing runs only after the capture is saved, and never blocks it.
+      resurface(raw);
     }
   }
 
@@ -118,7 +136,7 @@ export default function Home() {
           {note && <span className="text-sm text-zinc-500">{note}</span>}
         </div>
 
-        {!resurfaced && (
+        {!resurfaced && resurfaced2.length === 0 && (
           <p className="mt-6 text-sm leading-relaxed text-zinc-400">
             Paste a quote from anything you&apos;re reading, or write down a
             thought. LifeOS will help you decide what you actually believe about
@@ -126,6 +144,38 @@ export default function Home() {
           </p>
         )}
       </section>
+
+      {resurfaced2.length > 0 && (
+        <section className="rounded-2xl border border-black/[.06] bg-black/[.02] p-5 dark:border-white/[.08] dark:bg-white/[.03]">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+              This reminded LifeOS of
+            </p>
+            <button
+              type="button"
+              onClick={() => setResurfaced2([])}
+              className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Dismiss
+            </button>
+          </div>
+          <div className="mt-2">
+            <RetrievalResults
+              results={showMore ? resurfaced2 : resurfaced2.slice(0, 1)}
+              label={(r) => resurfaceLabel(r.record)}
+            />
+          </div>
+          {!showMore && resurfaced2.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setShowMore(true)}
+              className="mt-2 text-xs text-zinc-500 underline-offset-4 hover:underline"
+            >
+              Show {resurfaced2.length - 1} more →
+            </button>
+          )}
+        </section>
+      )}
     </main>
   );
 }

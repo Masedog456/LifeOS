@@ -44,7 +44,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -53,6 +53,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("belief_revisions").select("*").order("seq", { ascending: true }),
         this.client.from("user_judgments").select("*").order("seq", { ascending: true }),
         this.client.from("saved_quotes").select("*").order("created_at", { ascending: true }),
+        this.client.from("retrieval_feedback").select("*"),
       ]);
 
     const firstError =
@@ -62,7 +63,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       beliefs.error ||
       revisions.error ||
       judgments.error ||
-      quotes.error;
+      quotes.error ||
+      feedback.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -78,6 +80,12 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       beliefs: (beliefs.data ?? []).map((r: any) =>
         rowToBelief(r, revsByBelief[r.id] ?? [], judsByBelief[r.id] ?? []),
       ),
+      feedback: (feedback.data ?? []).map((r: any) => ({
+        recordId: r.record_id,
+        verdict: r.verdict,
+        at: r.at,
+        snoozeUntil: r.snooze_until ?? undefined,
+      })),
     };
   }
 
@@ -104,6 +112,15 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       );
       if (revRows.length) await this.insertIgnore("belief_revisions", revRows, "belief_id,seq");
       if (judRows.length) await this.insertIgnore("user_judgments", judRows, "belief_id,seq");
+    }
+    if (state.feedback?.length) {
+      const rows = state.feedback.map((f) => ({
+        record_id: f.recordId,
+        verdict: f.verdict,
+        at: f.at,
+        snooze_until: f.snoozeUntil ?? null,
+      }));
+      await this.insertIgnore("retrieval_feedback", rows, "user_id,record_id,at");
     }
     this.lastState = "synced";
     this.lastError = undefined;

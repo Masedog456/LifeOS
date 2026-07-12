@@ -11,6 +11,8 @@ import { useSyncExternalStore } from "react";
 import type {
   Belief,
   Capture,
+  FeedbackEntry,
+  FeedbackVerdict,
   JudgmentEntry,
   KnowledgeChunk,
   KnowledgeSource,
@@ -29,6 +31,7 @@ const EMPTY_STATE: StoreState = {
   proposals: [],
   beliefs: [],
   sources: [],
+  feedback: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -90,6 +93,7 @@ export function hydrate() {
           keyConcepts: asArray<string>(s?.keyConcepts),
           candidateBeliefs: asArray<string>(s?.candidateBeliefs),
         })),
+        feedback: asArray<FeedbackEntry>(parsed.feedback),
       };
       emit();
     }
@@ -101,7 +105,24 @@ export function hydrate() {
 /** Wipe all data (local + remote, if configured). */
 export function resetStore() {
   clearState();
-  setState({ captures: [], proposals: [], beliefs: [], sources: [] });
+  setState({ captures: [], proposals: [], beliefs: [], sources: [], feedback: [] });
+}
+
+/** Record user feedback on a surfaced retrieval record (append-only). */
+export function recordFeedback(
+  recordId: string,
+  verdict: FeedbackVerdict,
+  snoozeMinutes?: number,
+): void {
+  const entry: FeedbackEntry = {
+    recordId,
+    verdict,
+    at: now(),
+    ...(verdict === "snoozed" && snoozeMinutes
+      ? { snoozeUntil: new Date(Date.now() + snoozeMinutes * 60_000).toISOString() }
+      : {}),
+  };
+  setState({ ...state, feedback: [entry, ...state.feedback] });
 }
 
 /**

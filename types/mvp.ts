@@ -227,9 +227,51 @@ export interface KnowledgeSource {
   extractionStatus?: ExtractionStatus;
 }
 
+// ---------- Retrieval (LIFEOS-009) ----------
+
+export type RecordType =
+  | "source"
+  | "chunk"
+  | "summary"
+  | "concept"
+  | "quote"
+  | "capture"
+  | "proposal"
+  | "belief"
+  | "revision";
+
+/** A normalized, searchable view over existing data — built in memory, not persisted. */
+export interface RetrievalRecord {
+  id: string;
+  type: RecordType;
+  text: string;
+  title?: string;
+  sourceId?: string;
+  captureId?: string;
+  beliefId?: string;
+  page?: number;
+  status?: string;
+  concepts?: string[];
+  createdAt?: ISO;
+  updatedAt?: ISO;
+  href?: string;
+}
+
+export type FeedbackVerdict = "relevant" | "not_relevant" | "dismissed" | "snoozed";
+
+/** User feedback on a surfaced retrieval record — tunes future deterministic ranking. */
+export interface FeedbackEntry {
+  recordId: string;
+  verdict: FeedbackVerdict;
+  at: ISO;
+  /** Set when verdict is "snoozed": hidden until this time. */
+  snoozeUntil?: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
   beliefs: Belief[];
   sources: KnowledgeSource[];
+  feedback: FeedbackEntry[];
 }

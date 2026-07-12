@@ -85,6 +85,44 @@ Notes on this shape, for future implementation:
   application-level discipline — enforcing `PRINCIPLES.md` §6 at the data
   layer, not just in the UI.
 
+## Retrieval layer (LIFEOS-009 — implemented, deterministic)
+
+Intelligent Library retrieval is **implemented and deterministic** — no
+embeddings, no `pgvector`, no AI route, no background jobs. It runs
+entirely in the browser over the in-memory store.
+
+- **Records as a view, not a copy** (`lib/retrieval/records.ts`).
+  `buildRecords(state)` projects the existing store into normalized
+  `RetrievalRecord`s (one per source / summary / concept / quote / chunk /
+  candidate belief / capture / unresolved proposal / belief / earlier
+  revision). Records are rebuilt transiently on demand and are **never
+  persisted** — they duplicate no large source text on disk. Every record
+  keeps provenance (`sourceId`, `page`, `href`) so results are explainable.
+- **Explainable ranking** (`lib/retrieval/search.ts`). `search()` scores
+  each record with weighted, inspectable signals: exact phrase (×6),
+  concept overlap (×4), token overlap (×3), title/author match (×2), page
+  provenance, belief-status boost, and recency (×0.5) — exact and concept
+  matches are deliberately weighted above recency. Each result carries a
+  human "why it matched" `Reason`; **raw scores are never shown in the
+  UI**. Results are deduped by normalized text and diversified with a
+  per-source cap. `relatedTo(text, …)` is the same engine tuned for
+  contextual "what else relates to this" (limit 5, one per source).
+- **Feedback tunes ranking only** (`retrieval_feedback`, migration 0004).
+  `relevant` boosts, `not_relevant`/`dismissed` suppress, `snoozed` hides
+  until `snooze_until`. This is a deterministic re-rank/filter — **not** an
+  ML recommender, and it never changes a belief or its status.
+- **Where it surfaces.** Library search (grouped by type, with provenance
+  and why-matched), Home capture resurfacing (async, after save, ≤1
+  primary + up to 2 more, never blocking the save), Constitution
+  per-belief related evidence (collapsed, never auto-resolving
+  contradictions), and Reader "find related from your library" (collapsed,
+  excludes the current source).
+
+The section below describes a *possible future* semantic layer. It is
+**not** a description of today's retrieval, which is the deterministic
+engine above. A future migration to embeddings would sit behind the same
+`search`/`relatedTo` seams.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Belief } from "@/types/mvp";
 import {
   affirmBelief,
@@ -11,7 +11,10 @@ import {
   reviseBelief,
   useStore,
 } from "@/lib/mvpStore";
+import { buildRecords } from "@/lib/retrieval/records";
+import { relatedTo } from "@/lib/retrieval/search";
 import ThreadLine from "@/components/ThreadLine";
+import RetrievalResults from "@/components/RetrievalResults";
 
 const STATUS_LABEL: Record<Belief["status"], string> = {
   accepted: "Accepted",
@@ -33,6 +36,17 @@ function BeliefRow({ belief }: { belief: Belief }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(belief.text);
+  const [showRelated, setShowRelated] = useState(false);
+
+  // Related evidence from across the library — deterministic, explainable,
+  // and collapsed by default. LifeOS never auto-resolves contradictions; it
+  // only surfaces what might bear on this belief.
+  const related = useMemo(() => {
+    if (!open) return [];
+    return relatedTo(belief.text, buildRecords(state), state.feedback, {}).filter(
+      (r) => r.record.beliefId !== belief.id,
+    );
+  }, [open, belief.text, belief.id, state]);
 
   function saveRevision() {
     if (draft.trim() && draft.trim() !== belief.text) {
@@ -96,6 +110,24 @@ function BeliefRow({ belief }: { belief: Belief }) {
             {belief.judgments.length} judgment
             {belief.judgments.length === 1 ? "" : "s"}
           </p>
+
+          {/* Related evidence — collapsed, never auto-resolving */}
+          {related.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowRelated((s) => !s)}
+                className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              >
+                {showRelated ? "Hide" : "Show"} related evidence ({related.length})
+              </button>
+              {showRelated && (
+                <div className="mt-1">
+                  <RetrievalResults results={related} />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Evolve this belief over time */}
           {editing ? (

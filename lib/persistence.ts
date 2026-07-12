@@ -48,6 +48,7 @@ function normalize(partial: Partial<StoreState> | null): StoreState {
     proposals: partial?.proposals ?? [],
     beliefs: partial?.beliefs ?? [],
     sources: partial?.sources ?? [],
+    feedback: partial?.feedback ?? [],
   };
 }
 
