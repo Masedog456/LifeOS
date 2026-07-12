@@ -18,6 +18,7 @@ import {
 import { mockCompare } from "@/lib/mockCompare";
 import { mockDialectic } from "@/lib/mockDialectic";
 import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
+import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFormation";
 import type { EvidenceItem } from "@/types/mvp";
 
 export type AiSource = "ai" | "mock";
@@ -151,5 +152,31 @@ export function synthesizeThread(args: { evidence: EvidenceItem[]; title: string
   return call<unknown>(
     { task: "thread_synthesis", evidence: toWire(args.evidence), title: args.title, coverageNote: args.coverageNote },
     () => mockThreadSynthesis({ evidence: args.evidence, title: args.title, coverageNote: args.coverageNote }),
+  );
+}
+
+// ---------- Daily formation (LIFEOS-013) ----------
+
+/** Suggest small practices from a belief/thread packet. RAW object (validated by caller). */
+export function suggestPractices(args: { evidence: EvidenceItem[] }) {
+  return call<unknown>(
+    { task: "practice_suggest", evidence: toWire(args.evidence) },
+    () => mockPractices({ evidence: args.evidence }),
+  );
+}
+
+/** One weekly narrative synthesis. `summary` carries the deterministic counts. */
+export function weeklySynthesis(args: { evidence: EvidenceItem[]; summary: string }) {
+  return call<unknown>(
+    { task: "weekly_synthesis", evidence: toWire(args.evidence), question: args.summary },
+    () => mockWeeklySynthesis({ evidence: args.evidence, summary: args.summary }),
+  );
+}
+
+/** One cautious alignment reflection over accepted beliefs + reflections + practices. */
+export function alignmentReflection(args: { evidence: EvidenceItem[] }) {
+  return call<unknown>(
+    { task: "alignment_reflection", evidence: toWire(args.evidence) },
+    () => mockAlignment({ evidence: args.evidence }),
   );
 }

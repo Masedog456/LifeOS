@@ -254,6 +254,54 @@ agents, and it never changes the Constitution.
   RLS. Entry points: Nav, Constitution ("create Megathread"), Reader ("add to
   Megathread"), Compare/Inquiry ("create thread").
 
+## Formation engine — daily & weekly review (LIFEOS-013 — implemented)
+
+The Formation Engine is **implemented**: a calm daily/weekly review that
+helps the user reconnect with past knowledge and decide what should change.
+It surfaces and asks; the human interprets and decides. No embeddings, no
+graph UI, no background agents, and **no notifications, streaks, points,
+badges, or gamification of any kind**. Nothing high-stakes changes
+automatically.
+
+- **Records** (`types/mvp.ts`). `Reflection` (immutable `response` + a
+  SEPARATE append-only `annotations` list), `PracticeCandidate` (a
+  status machine — proposed/accepted/paused/completed/rejected — with
+  `derivedFrom` provenance and append-only `history`), and `ReviewSession`
+  (daily/weekly, with surfaced items, judgments, reflection ids, accepted
+  practices, and an optional narrative synthesis).
+- **Daily selection** (`lib/formation/daily.ts`). `buildDailyReview` returns
+  **at most three** items, each with an explicit reason, from a fixed-priority
+  pool (a questioned belief / an unresolved question / a recent thread change /
+  a belief not revisited in a while / a past thought or quote). It is fully
+  deterministic and filters items the user dismissed/snoozed/postponed — via
+  the existing LIFEOS-009 feedback store — or already reviewed today. No
+  infinite feed.
+- **Reflection flow** (`app/review`). Per item: affirm / revise / question /
+  dismiss / postpone / reflect. Saving a reflection NEVER changes a belief; a
+  "revise" routes through the existing append-only `reviseBelief` revision
+  flow.
+- **Practices** (`lib/formation/practice.ts` + `practice_suggest`). AI
+  proposes small, modest practices that must cite their derivation; a
+  guardrail rejects medical/legal/financial/dangerous directives and
+  moralizing language. Suggestions are provisional — the user must accept or
+  rewrite. No scheduling, no streaks.
+- **Weekly + alignment** (`lib/formation/weekly.ts`, `alignment.ts`).
+  Deterministic counts and week-over-week deltas first; **one optional**
+  `weekly_synthesis` narrative whose highlights must cite real record ids
+  (validated). The alignment reflection (`alignment_reflection`) is grounded
+  ONLY in accepted beliefs, the user's reflections, and accepted practices,
+  uses cautious wording ("You reported…", "would you like to examine this?"),
+  never accuses or diagnoses, and never infers behavior from missing data.
+- **AI + cost** (Phase 9). Deterministic selection → capped provenance packet
+  (evidence ids ARE real record ids) → **at most one** AI call per
+  user-triggered action → deterministic validation → mock fallback. No
+  automatic background calls; the approximate call count is shown before any
+  optional synthesis.
+- **Home + persistence.** Home stays quiet — one "Begin today's review" link,
+  no dashboard/metrics. Records persist to `reflections`/`practices`/
+  `review_sessions` (migration `0008_formation_engine.sql`; the reflection
+  response is immutable via a DB trigger; own-rows RLS).
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

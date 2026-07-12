@@ -644,6 +644,145 @@ export interface Megathread {
   updatedAt: ISO;
 }
 
+// ---------- Daily formation & review (LIFEOS-013) ----------
+
+/** A later note on a reflection, stored SEPARATELY from the immutable original. */
+export interface ReflectionAnnotation {
+  text: string;
+  at: ISO;
+}
+
+/** A written reflection. `response` is immutable; annotations are append-only. */
+export interface Reflection {
+  id: string;
+  prompt: string;
+  /** The user's original response — never edited in place. */
+  response: string;
+  createdAt: ISO;
+  beliefIds?: string[];
+  threadIds?: string[];
+  sourceIds?: string[];
+  /** Optional mood/context the user attached. */
+  context?: string;
+  /** Later notes/revisions kept separate from the original. */
+  annotations: ReflectionAnnotation[];
+}
+
+export type PracticeStatus = "proposed" | "accepted" | "paused" | "completed" | "rejected";
+/** A cadence SUGGESTION only — LifeOS never schedules or tracks streaks. */
+export type PracticeCadence = "once" | "daily" | "weekly" | "occasional";
+
+export interface PracticeHistoryEntry {
+  at: ISO;
+  status: PracticeStatus;
+  note?: string;
+}
+
+/** Which records a practice was derived from (provenance is required). */
+export interface PracticeDerivation {
+  beliefIds?: string[];
+  threadIds?: string[];
+  inquiryIds?: string[];
+}
+
+/** A small, modest, reviewable practice proposed from a belief/thread. */
+export interface PracticeCandidate {
+  id: string;
+  title: string;
+  description: string;
+  rationale: string;
+  derivedFrom: PracticeDerivation;
+  cadence?: PracticeCadence;
+  status: PracticeStatus;
+  /** The user's own wording once edited. */
+  userWording?: string;
+  source: "ai" | "mock" | "user";
+  createdAt: ISO;
+  updatedAt: ISO;
+  /** Append-only status history. */
+  history: PracticeHistoryEntry[];
+}
+
+export type ReviewType = "daily" | "weekly" | "monthly";
+
+export type SurfacedItemKind =
+  | "stale_belief"
+  | "questioned_belief"
+  | "unresolved_question"
+  | "quote"
+  | "capture"
+  | "thread_change";
+
+/** One deterministically-selected item surfaced in a review, with its reason. */
+export interface ReviewSurfacedItem {
+  id: string;
+  kind: SurfacedItemKind;
+  refId?: string;
+  beliefId?: string;
+  sourceId?: string;
+  threadId?: string;
+  title: string;
+  /** Why this surfaced — always shown to the user. */
+  reason: string;
+  href?: string;
+}
+
+export type ReviewDecision =
+  | "affirmed"
+  | "revised"
+  | "questioned"
+  | "dismissed"
+  | "postponed"
+  | "reflected";
+
+export interface ReviewJudgment {
+  itemId: string;
+  decision: ReviewDecision;
+  at: ISO;
+  note?: string;
+}
+
+/** A cited claim in a weekly synthesis / alignment reflection. */
+export interface CitedClaim {
+  statement: string;
+  recordIds: string[];
+}
+
+export interface WeeklySynthesisData {
+  narrative: string;
+  highlights: CitedClaim[];
+  recurringConcepts: string[];
+  unresolvedTensions: string[];
+  changesFromLastWeek: string[];
+  limitations: string[];
+  flagged?: string[];
+}
+
+export interface AlignmentData {
+  observations: CitedClaim[];
+  questions: string[];
+  limitations: string[];
+  flagged?: string[];
+}
+
+export interface ReviewSession {
+  id: string;
+  type: ReviewType;
+  surfaced: ReviewSurfacedItem[];
+  prompts?: string[];
+  reflectionIds: string[];
+  judgments: ReviewJudgment[];
+  acceptedPracticeIds: string[];
+  unresolvedQuestions: string[];
+  /** Weekly narrative (weekly reviews only). */
+  synthesis?: WeeklySynthesisData;
+  synthesisSource?: "ai" | "mock";
+  alignment?: AlignmentData;
+  alignmentSource?: "ai" | "mock";
+  startedAt: ISO;
+  completedAt?: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -653,4 +792,7 @@ export interface StoreState {
   comparisons: Comparison[];
   inquiries: Inquiry[];
   megathreads: Megathread[];
+  reflections: Reflection[];
+  practices: PracticeCandidate[];
+  reviews: ReviewSession[];
 }

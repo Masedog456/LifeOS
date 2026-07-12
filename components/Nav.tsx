@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/compare", label: "Compare" },
   { href: "/inquiry", label: "Inquiry" },
   { href: "/threads", label: "Threads" },
+  { href: "/review", label: "Review" },
   { href: "/inbox", label: "Inbox" },
   { href: "/constitution", label: "Constitution" },
 ];

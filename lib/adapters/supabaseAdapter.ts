@@ -19,6 +19,9 @@ import type {
   Comparison,
   Inquiry,
   Megathread,
+  PracticeCandidate,
+  Reflection,
+  ReviewSession,
   JudgmentEntry,
   KnowledgeChunk,
   KnowledgeSource,
@@ -47,7 +50,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -60,6 +63,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("comparisons").select("*").order("created_at", { ascending: false }),
         this.client.from("inquiries").select("*").order("created_at", { ascending: false }),
         this.client.from("megathreads").select("*").order("created_at", { ascending: false }),
+        this.client.from("reflections").select("*").order("created_at", { ascending: false }),
+        this.client.from("practices").select("*").order("created_at", { ascending: false }),
+        this.client.from("review_sessions").select("*").order("started_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -73,7 +79,10 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       feedback.error ||
       comparisons.error ||
       inquiries.error ||
-      megathreads.error;
+      megathreads.error ||
+      reflections.error ||
+      practices.error ||
+      reviews.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -98,6 +107,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       comparisons: (comparisons.data ?? []).map(rowToComparison),
       inquiries: (inquiries.data ?? []).map(rowToInquiry),
       megathreads: (megathreads.data ?? []).map(rowToMegathread),
+      reflections: (reflections.data ?? []).map(rowToReflection),
+      practices: (practices.data ?? []).map(rowToPractice),
+      reviews: (reviews.data ?? []).map(rowToReview),
     };
   }
 
@@ -142,6 +154,15 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     }
     if (state.megathreads.length) {
       await this.throwing(this.client.from("megathreads").upsert(state.megathreads.map(megathreadToRow)));
+    }
+    if (state.reflections.length) {
+      await this.throwing(this.client.from("reflections").upsert(state.reflections.map(reflectionToRow)));
+    }
+    if (state.practices.length) {
+      await this.throwing(this.client.from("practices").upsert(state.practices.map(practiceToRow)));
+    }
+    if (state.reviews.length) {
+      await this.throwing(this.client.from("review_sessions").upsert(state.reviews.map(reviewToRow)));
     }
     this.lastState = "synced";
     this.lastError = undefined;
@@ -205,6 +226,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("review_sessions").delete().eq("user_id", uid));
+    await this.throwing(this.client.from("practices").delete().eq("user_id", uid));
+    await this.throwing(this.client.from("reflections").delete().eq("user_id", uid));
     await this.throwing(this.client.from("megathreads").delete().eq("user_id", uid));
     await this.throwing(this.client.from("inquiries").delete().eq("user_id", uid));
     await this.throwing(this.client.from("comparisons").delete().eq("user_id", uid));
@@ -490,6 +514,103 @@ function rowToMegathread(r: any): Megathread {
     revisions: (r.revisions ?? []) as Megathread["revisions"],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+  };
+}
+
+function reflectionToRow(r: Reflection) {
+  return {
+    id: r.id,
+    prompt: r.prompt,
+    response: r.response,
+    belief_ids: r.beliefIds ?? [],
+    thread_ids: r.threadIds ?? [],
+    source_ids: r.sourceIds ?? [],
+    context: r.context ?? null,
+    annotations: r.annotations,
+    created_at: r.createdAt,
+  };
+}
+function rowToReflection(r: any): Reflection {
+  return {
+    id: r.id,
+    prompt: r.prompt ?? "",
+    response: r.response ?? "",
+    createdAt: r.created_at,
+    beliefIds: (r.belief_ids ?? undefined) as string[] | undefined,
+    threadIds: (r.thread_ids ?? undefined) as string[] | undefined,
+    sourceIds: (r.source_ids ?? undefined) as string[] | undefined,
+    context: r.context ?? undefined,
+    annotations: (r.annotations ?? []) as Reflection["annotations"],
+  };
+}
+
+function practiceToRow(p: PracticeCandidate) {
+  return {
+    id: p.id,
+    title: p.title,
+    description: p.description,
+    rationale: p.rationale,
+    derived_from: p.derivedFrom,
+    cadence: p.cadence ?? null,
+    status: p.status,
+    user_wording: p.userWording ?? null,
+    source: p.source,
+    history: p.history,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+  };
+}
+function rowToPractice(r: any): PracticeCandidate {
+  return {
+    id: r.id,
+    title: r.title ?? "",
+    description: r.description ?? "",
+    rationale: r.rationale ?? "",
+    derivedFrom: (r.derived_from ?? {}) as PracticeCandidate["derivedFrom"],
+    cadence: (r.cadence ?? undefined) as PracticeCandidate["cadence"],
+    status: (r.status ?? "proposed") as PracticeCandidate["status"],
+    userWording: r.user_wording ?? undefined,
+    source: (r.source ?? "mock") as PracticeCandidate["source"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    history: (r.history ?? []) as PracticeCandidate["history"],
+  };
+}
+
+function reviewToRow(r: ReviewSession) {
+  return {
+    id: r.id,
+    type: r.type,
+    surfaced: r.surfaced,
+    prompts: r.prompts ?? null,
+    reflection_ids: r.reflectionIds,
+    judgments: r.judgments,
+    accepted_practice_ids: r.acceptedPracticeIds,
+    unresolved_questions: r.unresolvedQuestions,
+    synthesis: r.synthesis ?? null,
+    synthesis_source: r.synthesisSource ?? null,
+    alignment: r.alignment ?? null,
+    alignment_source: r.alignmentSource ?? null,
+    started_at: r.startedAt,
+    completed_at: r.completedAt ?? null,
+  };
+}
+function rowToReview(r: any): ReviewSession {
+  return {
+    id: r.id,
+    type: (r.type ?? "daily") as ReviewSession["type"],
+    surfaced: (r.surfaced ?? []) as ReviewSession["surfaced"],
+    prompts: (r.prompts ?? undefined) as string[] | undefined,
+    reflectionIds: (r.reflection_ids ?? []) as string[],
+    judgments: (r.judgments ?? []) as ReviewSession["judgments"],
+    acceptedPracticeIds: (r.accepted_practice_ids ?? []) as string[],
+    unresolvedQuestions: (r.unresolved_questions ?? []) as string[],
+    synthesis: (r.synthesis ?? undefined) as ReviewSession["synthesis"],
+    synthesisSource: (r.synthesis_source ?? undefined) as ReviewSession["synthesisSource"],
+    alignment: (r.alignment ?? undefined) as ReviewSession["alignment"],
+    alignmentSource: (r.alignment_source ?? undefined) as ReviewSession["alignmentSource"],
+    startedAt: r.started_at,
+    completedAt: r.completed_at ?? undefined,
   };
 }
 

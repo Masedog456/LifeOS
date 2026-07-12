@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import {
@@ -176,6 +177,13 @@ export default function Home() {
           )}
         </section>
       )}
+
+      {/* One quiet entry point to the daily review — no dashboard, no metrics. */}
+      <div className="text-center">
+        <Link href="/review" className="text-sm text-zinc-500 underline-offset-4 hover:underline">
+          Begin today&apos;s review →
+        </Link>
+      </div>
     </main>
   );
 }

@@ -24,6 +24,45 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-12
+- **LIFEOS-013 — Daily formation & review: implemented.** A calm daily/weekly
+  review that helps the user reconnect with past knowledge and decide what
+  should change — LifeOS surfaces and asks, the human interprets and decides.
+  **No** embeddings, graph UI, background agents, notifications, streaks,
+  points, badges, or gamification; nothing high-stakes changes automatically.
+  New records (`types/mvp.ts`): `Reflection` (immutable `response` + separate
+  append-only `annotations`), `PracticeCandidate` (status machine + required
+  `derivedFrom` provenance + append-only `history`), `ReviewSession` (daily/
+  weekly with surfaced items, judgments, reflection ids, accepted practices,
+  optional synthesis). Daily selection (`lib/formation/daily.ts`,
+  `buildDailyReview`) is deterministic + explainable: ≤3 items from a fixed-
+  priority pool (questioned belief / unresolved question / recent thread change
+  / stale belief / past thought-or-quote), each with a reason, filtered by the
+  existing LIFEOS-009 feedback store (dismiss/snooze/postpone) and same-day
+  review history — no infinite feed. Reflection flow (`app/review`): affirm /
+  revise / question / dismiss / postpone / reflect; saving a reflection never
+  changes a belief; "revise" routes through the existing append-only
+  `reviseBelief` flow. Practices (`lib/formation/practice.ts` +
+  `practice_suggest`): AI proposes small practices citing derivation,
+  guardrailed against medical/legal/financial/dangerous/moralizing content,
+  provisional until the user accepts or rewrites — no scheduling, no streaks.
+  Weekly (`lib/formation/weekly.ts` + `weekly_synthesis`): deterministic counts
+  + week-over-week deltas first, **one optional** AI narrative whose highlights
+  cite real record ids (validated). Alignment (`alignment.ts` +
+  `alignment_reflection`): grounded only in accepted beliefs + reflections +
+  accepted practices, cautious wording, never accuses/diagnoses, never infers
+  from missing data. AI/cost: deterministic selection → capped packet (evidence
+  ids ARE record ids) → ≤1 call per user action → validation → mock fallback;
+  approximate call count shown; no background calls. Home stays quiet (one
+  "Begin today's review" link, no metrics). Persistence: `reflections`/
+  `practices`/`reviews` state + adapters + additive migration
+  `0008_formation_engine.sql` (immutable reflection response via trigger,
+  own-rows RLS, rerunnable; migrations 0001–0007 untouched). New `/review` +
+  `/review/weekly`; Nav "Review" + Home link. Verified: **23/23 formation
+  checks** + **21/21 megathread + 22/22 dialectic + 15/15 comparison + 9/9
+  regression + 12/12 long-source + 16/16 PDF + 11/11 retrieval**, zero runtime
+  errors; `lint`/`build` green. Still one AI route. Supabase sync/RLS/cross-
+  device of the new tables are code-complete but credential-pending.
+- Date: 2026-07-12
 - **LIFEOS-012 — Megathreads & longitudinal knowledge: implemented.** Living,
   provenance-grounded VIEWS (not folders, not copies) showing how a topic /
   question / belief develops across sources, captures, comparisons, inquiries,
@@ -966,3 +1005,31 @@ scope or order.
   `build`=0. Supabase persistence of `megathreads` (sync/RLS/cross-device) is
   code-complete but credential-pending. No graph UI, autonomous agents, auto
   Constitution changes, or new AI routes beyond the single `/api/ai`.
+- 2026-07-12 — Implemented **LIFEOS-013 formation engine (daily & weekly
+  review)**. New: `lib/formation/daily.ts` (deterministic ≤3-item selection,
+  feedback-filtered), `lib/formation/weekly.ts` (deterministic counts/deltas +
+  weekly-synthesis orchestrator), `lib/formation/alignment.ts` (cautious
+  alignment reflection), `lib/formation/practice.ts` (practice suggestion +
+  safety guardrails), `lib/formation/schema.ts` (weekly/alignment validation —
+  drop uncited claims, flag accusatory language), `lib/mockFormation.ts`,
+  `components/PracticeList.tsx`, `app/review/page.tsx` + `app/review/weekly/
+  page.tsx`, `supabase/migrations/0008_formation_engine.sql`. Extended
+  `types/mvp.ts` (`Reflection`, `PracticeCandidate`, `ReviewSession`,
+  `WeeklySynthesisData`, `AlignmentData`, `CitedClaim` + enums,
+  `StoreState.{reflections,practices,reviews}`), `app/api/ai/route.ts`
+  (`practice_suggest` / `weekly_synthesis` / `alignment_reflection` tasks; bumped
+  evidence-id length 12→64 so real record-id citations validate),
+  `lib/aiClient.ts` (`suggestPractices` / `weeklySynthesis` /
+  `alignmentReflection`), `lib/mvpStore.ts` (reflection/practice/review state +
+  actions + `getStoreSnapshot`), `lib/persistence.ts`,
+  `lib/adapters/localAdapter.ts`, `lib/adapters/supabaseAdapter.ts` (load/save/
+  delete + row mappers). Entry point added to `components/Nav.tsx` and the Home
+  page (one quiet link). Reflections never change beliefs; a revise routes
+  through the existing revision flow; practices require explicit acceptance;
+  the Constitution never changes automatically; Home has no gamification.
+  Verified 23/23 formation + 21/21 megathread + 22/22 dialectic + 15/15
+  comparison + 9/9 regression + 12/12 long-source + 16/16 PDF + 11/11 retrieval
+  checks, zero runtime errors; `lint`=0, `build`=0. Supabase persistence of the
+  new tables (sync/RLS/cross-device) is code-complete but credential-pending.
+  No embeddings, graph UI, autonomous agents, notifications/streaks/points, or
+  new AI routes beyond the single `/api/ai`.

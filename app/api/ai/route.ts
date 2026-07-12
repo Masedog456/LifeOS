@@ -30,6 +30,7 @@ import {
 import { mockCompare } from "@/lib/mockCompare";
 import { mockDialectic } from "@/lib/mockDialectic";
 import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
+import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFormation";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -46,7 +47,10 @@ type Task =
   | "compare_verify"
   | "dialectic"
   | "dialectic_verify"
-  | "thread_synthesis";
+  | "thread_synthesis"
+  | "practice_suggest"
+  | "weekly_synthesis"
+  | "alignment_reflection";
 
 const ALLOWED_TASKS = new Set<Task>([
   "beliefs",
@@ -61,6 +65,9 @@ const ALLOWED_TASKS = new Set<Task>([
   "dialectic",
   "dialectic_verify",
   "thread_synthesis",
+  "practice_suggest",
+  "weekly_synthesis",
+  "alignment_reflection",
 ]);
 
 const MAX_INPUT_CHARS = 50_000;
@@ -315,6 +322,62 @@ function threadSynthesisPrompt(input: AiInput): string {
   ].join("\n");
 }
 
+function practiceSuggestPrompt(input: AiInput): string {
+  return [
+    "Propose 1–3 SMALL, modest, concrete practices that follow from the",
+    "material below. Each must be reviewable in a sentence and safe.",
+    "",
+    "HARD RULES:",
+    "- NO medical, legal, financial, or dangerous behavioral directives.",
+    "- NO moralizing or shaming language ('you must', 'you should', 'sinful').",
+    "- No scheduling, no streaks. A cadence is a gentle suggestion only.",
+    "- Ground each practice in the material; state the derivation in rationale.",
+    "",
+    "Return ONLY JSON: { \"practices\": [ { \"title\": string, \"description\":",
+    "string, \"rationale\": string, \"cadence\": \"once\"|\"daily\"|\"weekly\"|\"occasional\" } ] }",
+    "",
+    "Material:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
+function weeklySynthesisPrompt(input: AiInput): string {
+  return [
+    "Write a SHORT, factual weekly-review narrative of the user's activity.",
+    "Use ONLY the records below; cite them by id in recordIds. Never invent",
+    "activity. Be plain and non-judgmental — no praise, no scolding.",
+    "",
+    "Return ONLY JSON: { \"narrative\": string, \"highlights\": [ { \"statement\":",
+    "string, \"recordIds\": string[] } ], \"limitations\": string[] }",
+    "",
+    `Deterministic counts: ${input.question}`,
+    "",
+    "Records:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
+function alignmentReflectionPrompt(input: AiInput): string {
+  return [
+    "Gently reflect on alignment between what the user says they believe and",
+    "what they have REPORTED living. Use ONLY the records below; cite ids in",
+    "recordIds.",
+    "",
+    "HARD RULES (Phase 7):",
+    "- Never accuse, diagnose, or moralize. No 'you failed', 'hypocrite',",
+    "  'you should'. Use cautious wording: 'You reported…', 'This may be in",
+    "  tension with…', 'Would you like to examine this?'.",
+    "- Do NOT infer private behavior from missing data. Absence of a record is",
+    "  NOT evidence about their life.",
+    "",
+    "Return ONLY JSON: { \"observations\": [ { \"statement\": string, \"recordIds\":",
+    "string[] } ], \"questions\": string[], \"limitations\": string[] }",
+    "",
+    "Records:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
 function promptFor(input: AiInput): string {
   const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (input.task) {
@@ -327,6 +390,12 @@ function promptFor(input: AiInput): string {
       return dialecticPrompt(input);
     case "thread_synthesis":
       return threadSynthesisPrompt(input);
+    case "practice_suggest":
+      return practiceSuggestPrompt(input);
+    case "weekly_synthesis":
+      return weeklySynthesisPrompt(input);
+    case "alignment_reflection":
+      return alignmentReflectionPrompt(input);
     case "summary":
       return `Summarize the following in 2–4 sentences, plainly, no preamble.\n\n${src}`;
     case "quotes":
@@ -403,6 +472,12 @@ function mockFor(input: AiInput): unknown {
         title: input.title || "Thread",
         coverageNote: input.coverageNote,
       });
+    case "practice_suggest":
+      return mockPractices({ evidence: input.evidence });
+    case "weekly_synthesis":
+      return mockWeeklySynthesis({ evidence: input.evidence, summary: input.question });
+    case "alignment_reflection":
+      return mockAlignment({ evidence: input.evidence });
     case "beliefs":
     default:
       return mockProposals(input.text);
@@ -425,8 +500,11 @@ function parseFor(input: AiInput, raw: string): unknown {
     case "dialectic":
     case "dialectic_verify":
     case "thread_synthesis":
+    case "practice_suggest":
+    case "weekly_synthesis":
+    case "alignment_reflection":
       // Return the raw parsed object; strict validation happens client-side
-      // (lib/comparison, lib/dialectic, lib/megathread) with the full evidence set.
+      // (lib/comparison, lib/dialectic, lib/megathread, lib/formation).
       return JSON.parse(jsonSlice(raw, "{"));
     case "beliefs":
     default: {
@@ -506,7 +584,7 @@ export async function POST(request: Request) {
                 !!e && typeof (e as CompareEvidence).id === "string" && typeof (e as CompareEvidence).text === "string",
             )
             .map((e) => ({
-              id: String(e.id).slice(0, 12),
+              id: String(e.id).slice(0, 64),
               group: String(e.group ?? "").slice(0, 200),
               kind: String(e.kind ?? "").slice(0, 40),
               text: String(e.text).slice(0, 2_000),
@@ -525,7 +603,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
 
-  const EVIDENCE_TASKS = new Set<Task>(["compare", "compare_verify", "dialectic", "dialectic_verify", "thread_synthesis"]);
+  const EVIDENCE_TASKS = new Set<Task>([
+    "compare", "compare_verify", "dialectic", "dialectic_verify", "thread_synthesis",
+    "practice_suggest", "weekly_synthesis", "alignment_reflection",
+  ]);
   const hasInput =
     input.task === "reduce_summary"
       ? input.summaries.length > 0

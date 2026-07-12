@@ -28,6 +28,17 @@ import type {
   StoreState,
   ThreadMemberRef,
   ThreadSynthesisData,
+  AlignmentData,
+  PracticeCadence,
+  PracticeCandidate,
+  PracticeDerivation,
+  PracticeStatus,
+  Reflection,
+  ReviewDecision,
+  ReviewSession,
+  ReviewSurfacedItem,
+  ReviewType,
+  WeeklySynthesisData,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
@@ -43,6 +54,9 @@ const EMPTY_STATE: StoreState = {
   comparisons: [],
   inquiries: [],
   megathreads: [],
+  reflections: [],
+  practices: [],
+  reviews: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -123,6 +137,22 @@ export function hydrate() {
           judgments: asArray<Megathread["judgments"][number]>(t?.judgments),
           revisions: asArray<Megathread["revisions"][number]>(t?.revisions),
         })),
+        reflections: asArray<Reflection>(parsed.reflections).map((r) => ({
+          ...r,
+          annotations: asArray<Reflection["annotations"][number]>(r?.annotations),
+        })),
+        practices: asArray<PracticeCandidate>(parsed.practices).map((p) => ({
+          ...p,
+          history: asArray<PracticeCandidate["history"][number]>(p?.history),
+        })),
+        reviews: asArray<ReviewSession>(parsed.reviews).map((r) => ({
+          ...r,
+          surfaced: asArray<ReviewSurfacedItem>(r?.surfaced),
+          reflectionIds: asArray<string>(r?.reflectionIds),
+          judgments: asArray<ReviewSession["judgments"][number]>(r?.judgments),
+          acceptedPracticeIds: asArray<string>(r?.acceptedPracticeIds),
+          unresolvedQuestions: asArray<string>(r?.unresolvedQuestions),
+        })),
       };
       emit();
     }
@@ -134,7 +164,10 @@ export function hydrate() {
 /** Wipe all data (local + remote, if configured). */
 export function resetStore() {
   clearState();
-  setState({ captures: [], proposals: [], beliefs: [], sources: [], feedback: [], comparisons: [], inquiries: [], megathreads: [] });
+  setState({
+    captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
+    comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [],
+  });
 }
 
 /** Record user feedback on a surfaced retrieval record (append-only). */
@@ -398,6 +431,11 @@ export function addSource(
 /** Non-hook read of the current source (for the pipeline, which isn't a component). */
 export function getSource(sourceId: string): KnowledgeSource | undefined {
   return state.sources.find((s) => s.id === sourceId);
+}
+
+/** Non-hook read of the whole store (for orchestrators triggered from events). */
+export function getStoreSnapshot(): StoreState {
+  return state;
 }
 
 function updateSource(sourceId: string, update: (s: KnowledgeSource) => KnowledgeSource) {
@@ -730,4 +768,150 @@ export function megathreadById(s: StoreState, threadId: string): Megathread | un
 export function threadsForSeed(s: StoreState, seedType: Megathread["seedType"], seedId?: string): Megathread[] {
   if (!seedId) return [];
   return s.megathreads.filter((t) => t.seedType === seedType && t.seedId === seedId);
+}
+
+// ---------- Formation actions (LIFEOS-013) ----------
+
+/** Save a reflection. `response` is immutable; annotations are added separately. */
+export function addReflection(fields: {
+  prompt: string;
+  response: string;
+  beliefIds?: string[];
+  threadIds?: string[];
+  sourceIds?: string[];
+  context?: string;
+}): string {
+  const reflection: Reflection = {
+    id: id(),
+    prompt: fields.prompt,
+    response: fields.response.trim(),
+    createdAt: now(),
+    beliefIds: fields.beliefIds,
+    threadIds: fields.threadIds,
+    sourceIds: fields.sourceIds,
+    context: fields.context?.trim() || undefined,
+    annotations: [],
+  };
+  setState({ ...state, reflections: [reflection, ...state.reflections] });
+  return reflection.id;
+}
+
+/** Append a later note to a reflection (kept separate from the immutable original). */
+export function annotateReflection(reflectionId: string, text: string): void {
+  const t = text.trim();
+  if (!t) return;
+  setState({
+    ...state,
+    reflections: state.reflections.map((r) =>
+      r.id === reflectionId ? { ...r, annotations: [...r.annotations, { text: t, at: now() }] } : r,
+    ),
+  });
+}
+
+export interface PracticeDraftInput {
+  title: string;
+  description: string;
+  rationale: string;
+  cadence?: PracticeCadence;
+  derivedFrom: PracticeDerivation;
+}
+
+/** Create proposed practice candidates from validated drafts. Returns their ids. */
+export function addPractices(drafts: PracticeDraftInput[], source: "ai" | "mock"): string[] {
+  const at = now();
+  const created: PracticeCandidate[] = drafts.map((d) => ({
+    id: id(),
+    title: d.title,
+    description: d.description,
+    rationale: d.rationale,
+    derivedFrom: d.derivedFrom,
+    cadence: d.cadence,
+    status: "proposed",
+    source,
+    createdAt: at,
+    updatedAt: at,
+    history: [{ at, status: "proposed" }],
+  }));
+  setState({ ...state, practices: [...created, ...state.practices] });
+  return created.map((p) => p.id);
+}
+
+function patchPractice(practiceId: string, patch: (p: PracticeCandidate) => PracticeCandidate): void {
+  setState({
+    ...state,
+    practices: state.practices.map((p) => (p.id === practiceId ? patch(p) : p)),
+  });
+}
+
+/** Change a practice's status (append-only history). Never scheduled or tracked. */
+export function setPracticeStatus(practiceId: string, status: PracticeStatus, note?: string): void {
+  const at = now();
+  patchPractice(practiceId, (p) => ({
+    ...p,
+    status,
+    updatedAt: at,
+    history: [...p.history, { at, status, ...(note ? { note } : {}) }],
+  }));
+}
+
+export function editPracticeWording(practiceId: string, wording: string): void {
+  patchPractice(practiceId, (p) => ({ ...p, userWording: wording.trim() || undefined, source: "user", updatedAt: now() }));
+}
+
+/** Start a review session with the deterministically-surfaced items. Returns its id. */
+export function startReview(type: ReviewType, surfaced: ReviewSurfacedItem[]): string {
+  const session: ReviewSession = {
+    id: id(),
+    type,
+    surfaced,
+    reflectionIds: [],
+    judgments: [],
+    acceptedPracticeIds: [],
+    unresolvedQuestions: [],
+    startedAt: now(),
+  };
+  setState({ ...state, reviews: [session, ...state.reviews] });
+  return session.id;
+}
+
+function patchReview(reviewId: string, patch: (r: ReviewSession) => ReviewSession): void {
+  setState({
+    ...state,
+    reviews: state.reviews.map((r) => (r.id === reviewId ? patch(r) : r)),
+  });
+}
+
+export function recordReviewJudgment(reviewId: string, itemId: string, decision: ReviewDecision, note?: string): void {
+  patchReview(reviewId, (r) => ({
+    ...r,
+    judgments: [...r.judgments, { itemId, decision, at: now(), ...(note ? { note } : {}) }],
+  }));
+}
+
+export function attachReflectionToReview(reviewId: string, reflectionId: string): void {
+  patchReview(reviewId, (r) =>
+    r.reflectionIds.includes(reflectionId) ? r : { ...r, reflectionIds: [...r.reflectionIds, reflectionId] },
+  );
+}
+
+export function markPracticeAcceptedInReview(reviewId: string, practiceId: string): void {
+  patchReview(reviewId, (r) =>
+    r.acceptedPracticeIds.includes(practiceId) ? r : { ...r, acceptedPracticeIds: [...r.acceptedPracticeIds, practiceId] },
+  );
+}
+
+export function setReviewSynthesis(reviewId: string, synthesis: WeeklySynthesisData, source: "ai" | "mock"): void {
+  patchReview(reviewId, (r) => ({ ...r, synthesis, synthesisSource: source }));
+}
+
+export function setReviewAlignment(reviewId: string, alignment: AlignmentData, source: "ai" | "mock"): void {
+  patchReview(reviewId, (r) => ({ ...r, alignment, alignmentSource: source }));
+}
+
+export function completeReview(reviewId: string): void {
+  patchReview(reviewId, (r) => (r.completedAt ? r : { ...r, completedAt: now() }));
+}
+
+export function reviewById(s: StoreState, reviewId: string): ReviewSession | undefined {
+  return s.reviews.find((r) => r.id === reviewId);
 }

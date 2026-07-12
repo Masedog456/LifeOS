@@ -49,7 +49,16 @@
    touch migrations 0001–0006, existing rows, other tables, or their RLS.
    Threads store only references to existing records — never copies of source
    text — and the timeline is a read-model derived at render time.
-8. **Project Settings → API**: copy the **Project URL** and the **anon
+8. Then run `supabase/migrations/0008_formation_engine.sql` (LIFEOS-013 —
+   adds `reflections` (immutable `response` enforced by a trigger + separate
+   append-only `annotations`), `practices` (status machine + append-only
+   `history`), and `review_sessions` (daily/weekly, jsonb surfaced items /
+   judgments / optional synthesis). Own-rows RLS; reflections allow
+   select/insert/update (update only for adding annotations — the trigger
+   blocks changing `response`). Additive and rerunnable; it does not touch
+   migrations 0001–0007, existing rows, other tables, or their RLS. There is
+   **no** habit-tracker / streak / schedule table.
+9. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -146,6 +155,16 @@ changes runtime behavior.
       flagged; accept an insight → Belief Inbox (Constitution unchanged);
       thread + synthesis persist after refresh. (21/21 automated checks, mock
       mode.)
+- [x] **Formation engine (LIFEOS-013):** daily review shows ≤3 items, each with
+      an explicit reason; reflection saves without changing beliefs (response
+      immutable); a "revise" enters the existing revision flow (append-only);
+      practice candidates cite their derivation and require explicit
+      acceptance (no auto-accept); dismissed/snoozed items don't immediately
+      return; weekly counts reflect real activity and the optional synthesis
+      cites valid record ids; alignment wording stays cautious + non-accusatory;
+      no Constitution changes automatically; Home shows one quiet entry point
+      with no streaks/points/metrics; review sessions persist after refresh.
+      (23/23 automated checks, mock mode.)
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
@@ -192,6 +211,10 @@ changes runtime behavior.
 - [ ] Megathreads sync: create a thread (with members + a synthesis) in
       Browser A → it appears in Browser B with its members and synthesis. A
       second account cannot read it (RLS on `megathreads`).
+- [ ] Formation sync: write a reflection, accept a practice, and run a weekly
+      review in Browser A → they appear in Browser B. A second account cannot
+      read them (RLS on `reflections`/`practices`/`review_sessions`). The
+      reflection `response` cannot be overwritten (DB trigger).
 
 ## C. Real Anthropic (CREDENTIAL-DEPENDENT, pending)
 
