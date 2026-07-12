@@ -16,6 +16,7 @@ import {
   type ChunkMap,
 } from "@/lib/mockAI";
 import { mockCompare } from "@/lib/mockCompare";
+import { mockDialectic } from "@/lib/mockDialectic";
 import type { EvidenceItem } from "@/types/mvp";
 
 export type AiSource = "ai" | "mock";
@@ -115,6 +116,29 @@ export function runComparison(args: {
 export function verifyComparison(evidence: EvidenceItem[], draft: unknown) {
   return call<{ cautions?: string[]; removeStatements?: string[] }>(
     { task: "compare_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
+    () => ({ cautions: [], removeStatements: [] }),
+  );
+}
+
+// ---------- Dialectical intelligence (LIFEOS-011) ----------
+
+/** One structured dialectic call. Returns the RAW result object (validated by caller). */
+export function runDialectic(args: { evidence: EvidenceItem[]; question: string; coverageNote: string }) {
+  return call<unknown>(
+    {
+      task: "dialectic",
+      evidence: toWire(args.evidence),
+      question: args.question,
+      coverageNote: args.coverageNote,
+    },
+    () => mockDialectic({ evidence: args.evidence, question: args.question, coverageNote: args.coverageNote }),
+  );
+}
+
+/** Optional second-opinion verification pass (larger inquiries only). */
+export function verifyDialectic(evidence: EvidenceItem[], draft: unknown) {
+  return call<{ cautions?: string[]; removeStatements?: string[] }>(
+    { task: "dialectic_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
     () => ({ cautions: [], removeStatements: [] }),
   );
 }

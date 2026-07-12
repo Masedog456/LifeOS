@@ -50,6 +50,7 @@ function normalize(partial: Partial<StoreState> | null): StoreState {
     sources: partial?.sources ?? [],
     feedback: partial?.feedback ?? [],
     comparisons: partial?.comparisons ?? [],
+    inquiries: partial?.inquiries ?? [],
   };
 }
 

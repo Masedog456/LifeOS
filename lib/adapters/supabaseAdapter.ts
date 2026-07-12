@@ -17,6 +17,7 @@ import type {
   Belief,
   Capture,
   Comparison,
+  Inquiry,
   JudgmentEntry,
   KnowledgeChunk,
   KnowledgeSource,
@@ -45,7 +46,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -56,6 +57,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("saved_quotes").select("*").order("created_at", { ascending: true }),
         this.client.from("retrieval_feedback").select("*"),
         this.client.from("comparisons").select("*").order("created_at", { ascending: false }),
+        this.client.from("inquiries").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -67,7 +69,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       judgments.error ||
       quotes.error ||
       feedback.error ||
-      comparisons.error;
+      comparisons.error ||
+      inquiries.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -90,6 +93,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         snoozeUntil: r.snooze_until ?? undefined,
       })),
       comparisons: (comparisons.data ?? []).map(rowToComparison),
+      inquiries: (inquiries.data ?? []).map(rowToInquiry),
     };
   }
 
@@ -128,6 +132,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     }
     if (state.comparisons.length) {
       await this.throwing(this.client.from("comparisons").upsert(state.comparisons.map(comparisonToRow)));
+    }
+    if (state.inquiries.length) {
+      await this.throwing(this.client.from("inquiries").upsert(state.inquiries.map(inquiryToRow)));
     }
     this.lastState = "synced";
     this.lastError = undefined;
@@ -191,6 +198,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("inquiries").delete().eq("user_id", uid));
     await this.throwing(this.client.from("comparisons").delete().eq("user_id", uid));
     await this.throwing(this.client.from("beliefs").delete().eq("user_id", uid));
     await this.throwing(this.client.from("proposals").delete().eq("user_id", uid));
@@ -378,6 +386,54 @@ function rowToComparison(r: any): Comparison {
     verified: Boolean(r.verified),
     createdAt: r.created_at,
     judgments: (r.judgments ?? []) as Comparison["judgments"],
+  };
+}
+
+function inquiryToRow(i: Inquiry) {
+  return {
+    id: i.id,
+    question: i.question,
+    inputs: i.inputs,
+    source_ids: i.sourceIds,
+    belief_ids: i.beliefIds,
+    comparison_ids: i.comparisonIds,
+    evidence: i.evidence,
+    result: i.result,
+    history: i.history,
+    ai_model: i.aiModel,
+    source: i.source,
+    coverage: i.coverage,
+    partial: i.partial,
+    verified: i.verified,
+    status: i.status,
+    provisional_conclusion: i.provisionalConclusion ?? null,
+    judgments: i.judgments,
+    created_at: i.createdAt,
+    updated_at: i.updatedAt,
+  };
+}
+
+function rowToInquiry(r: any): Inquiry {
+  return {
+    id: r.id,
+    question: r.question,
+    inputs: (r.inputs ?? []) as Inquiry["inputs"],
+    sourceIds: (r.source_ids ?? []) as string[],
+    beliefIds: (r.belief_ids ?? []) as string[],
+    comparisonIds: (r.comparison_ids ?? []) as string[],
+    evidence: (r.evidence ?? []) as Inquiry["evidence"],
+    result: r.result as Inquiry["result"],
+    history: (r.history ?? []) as Inquiry["history"],
+    aiModel: r.ai_model ?? "mock",
+    source: r.source ?? "mock",
+    coverage: r.coverage ?? null,
+    partial: Boolean(r.partial),
+    verified: Boolean(r.verified),
+    status: (r.status ?? "open") as Inquiry["status"],
+    provisionalConclusion: r.provisional_conclusion ?? undefined,
+    judgments: (r.judgments ?? []) as Inquiry["judgments"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
 }
 

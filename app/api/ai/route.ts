@@ -28,6 +28,7 @@ import {
   type ChunkMap,
 } from "@/lib/mockAI";
 import { mockCompare } from "@/lib/mockCompare";
+import { mockDialectic } from "@/lib/mockDialectic";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -41,7 +42,9 @@ type Task =
   | "map"
   | "reduce_summary"
   | "compare"
-  | "compare_verify";
+  | "compare_verify"
+  | "dialectic"
+  | "dialectic_verify";
 
 const ALLOWED_TASKS = new Set<Task>([
   "beliefs",
@@ -53,6 +56,8 @@ const ALLOWED_TASKS = new Set<Task>([
   "reduce_summary",
   "compare",
   "compare_verify",
+  "dialectic",
+  "dialectic_verify",
 ]);
 
 const MAX_INPUT_CHARS = 50_000;
@@ -232,13 +237,61 @@ function verifyPrompt(input: AiInput): string {
   ].join("\n");
 }
 
+function dialecticPrompt(input: AiInput): string {
+  return [
+    "You are helping a reader reason dialectically about ONE question. You do",
+    "NOT decide what they must believe — you lay out the strongest cases,",
+    "objections, and unresolved tensions, grounded in the evidence.",
+    "Use ONLY the evidence items below, and cite them by id (e.g. E1, E4).",
+    "",
+    "RULES:",
+    "- Every SUBSTANTIVE assertion (assumptions, affirmative/negative points,",
+    "  supporting evidence, counterarguments, rebuttals, relation-to-beliefs)",
+    "  MUST cite one or more evidence ids that appear below. Never cite an id",
+    "  that is not listed. Never assert a conclusion you cannot ground.",
+    "- Do NOT invent quotes, claims, or objections absent from the evidence.",
+    "  A hallucinated objection is worse than a missing one.",
+    "- Do NOT manufacture false balance: if one side is weakly supported by the",
+    "  evidence, say so rather than inventing a symmetric counter-case.",
+    "- Tag each point's argType where useful: premise, conclusion, objection,",
+    "  rebuttal, qualification, analogy, definition, empirical, interpretive,",
+    "  theological, personal_judgment.",
+    "- In reasoningIssues, note only genuinely present defects (invalid_inference,",
+    "  hidden_assumption, equivocation, circular_reasoning, unsupported_generalization).",
+    "- Use cautious language. NEVER claim formal certainty ('proves',",
+    "  'definitively') over interpretive or theological evidence.",
+    "",
+    "Return ONLY a JSON object with keys: question (string),",
+    "definitions ({term, definition}[]), assumptions ({statement, evidenceIds[], argType?}[]),",
+    "affirmativeCase (point[]), negativeCase (point[]),",
+    "supportingEvidence ({position, evidenceIds[]}[]),",
+    "counterarguments (point[]), rebuttals (point[]),",
+    "terminologyDisputes ({term, note, evidenceIds[]}[]),",
+    "distinctions (string[]), unresolvedAmbiguities (string[]),",
+    "possibleSyntheses ({statement, evidenceIds[]}[]),",
+    "evidenceThatWouldChange (string[]), questionsForHuman (string[]),",
+    "relationToBeliefs (point[]), reasoningIssues ({kind, note, evidenceIds[]}[]),",
+    "limitations (string[]), coverageNote (string).",
+    "(point = {statement, evidenceIds[], argType?})",
+    "",
+    `Question: ${input.question}`,
+    `Coverage note: ${input.coverageNote}`,
+    "",
+    "Evidence:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
 function promptFor(input: AiInput): string {
   const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (input.task) {
     case "compare":
       return comparePrompt(input);
     case "compare_verify":
+    case "dialectic_verify":
       return verifyPrompt(input);
+    case "dialectic":
+      return dialecticPrompt(input);
     case "summary":
       return `Summarize the following in 2–4 sentences, plainly, no preamble.\n\n${src}`;
     case "quotes":
@@ -301,7 +354,14 @@ function mockFor(input: AiInput): unknown {
         coverageNote: input.coverageNote,
       });
     case "compare_verify":
+    case "dialectic_verify":
       return { cautions: [], removeStatements: [] };
+    case "dialectic":
+      return mockDialectic({
+        evidence: input.evidence,
+        question: input.question,
+        coverageNote: input.coverageNote,
+      });
     case "beliefs":
     default:
       return mockProposals(input.text);
@@ -321,8 +381,10 @@ function parseFor(input: AiInput, raw: string): unknown {
       return parseMap(raw, input.text);
     case "compare":
     case "compare_verify":
+    case "dialectic":
+    case "dialectic_verify":
       // Return the raw parsed object; strict validation happens client-side
-      // (lib/comparison) where the full evidence set is available.
+      // (lib/comparison, lib/dialectic) where the full evidence set is available.
       return JSON.parse(jsonSlice(raw, "{"));
     case "beliefs":
     default: {
@@ -334,8 +396,10 @@ function parseFor(input: AiInput, raw: string): unknown {
 }
 
 function maxTokensFor(task: Task): number {
-  // Comparison output is a large structured object; give it more room.
-  return task === "compare" ? 3072 : task === "compare_verify" ? 1024 : 1024;
+  // Structured comparison/dialectic outputs are large; give them more room.
+  if (task === "dialectic") return 4096;
+  if (task === "compare") return 3072;
+  return 1024;
 }
 
 async function callAnthropic(key: string, input: AiInput): Promise<unknown> {
@@ -419,10 +483,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
 
+  const EVIDENCE_TASKS = new Set<Task>(["compare", "compare_verify", "dialectic", "dialectic_verify"]);
   const hasInput =
     input.task === "reduce_summary"
       ? input.summaries.length > 0
-      : input.task === "compare" || input.task === "compare_verify"
+      : EVIDENCE_TASKS.has(input.task)
         ? input.evidence.length > 0
         : input.text.length > 0;
   if (!hasInput) {

@@ -438,6 +438,12 @@ export default function ReaderPage() {
             >
               Compare with another source →
             </Link>
+            <Link
+              href={`/inquiry?add=${id}&q=${encodeURIComponent(`What does ${source.title} imply about `)}`}
+              className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              Investigate this passage →
+            </Link>
           </footer>
         </>
       )}

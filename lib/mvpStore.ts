@@ -15,6 +15,8 @@ import type {
   ComparisonDecision,
   FeedbackEntry,
   FeedbackVerdict,
+  Inquiry,
+  InquiryStatus,
   JudgmentEntry,
   KnowledgeChunk,
   KnowledgeSource,
@@ -35,6 +37,7 @@ const EMPTY_STATE: StoreState = {
   sources: [],
   feedback: [],
   comparisons: [],
+  inquiries: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -101,6 +104,11 @@ export function hydrate() {
           ...c,
           judgments: asArray<Comparison["judgments"][number]>(c?.judgments),
         })),
+        inquiries: asArray<Inquiry>(parsed.inquiries).map((i) => ({
+          ...i,
+          judgments: asArray<Inquiry["judgments"][number]>(i?.judgments),
+          history: asArray<Inquiry["history"][number]>(i?.history),
+        })),
       };
       emit();
     }
@@ -112,7 +120,7 @@ export function hydrate() {
 /** Wipe all data (local + remote, if configured). */
 export function resetStore() {
   clearState();
-  setState({ captures: [], proposals: [], beliefs: [], sources: [], feedback: [], comparisons: [] });
+  setState({ captures: [], proposals: [], beliefs: [], sources: [], feedback: [], comparisons: [], inquiries: [] });
 }
 
 /** Record user feedback on a surfaced retrieval record (append-only). */
@@ -503,4 +511,57 @@ export function judgeComparisonInsight(
 
 export function comparisonById(s: StoreState, comparisonId: string): Comparison | undefined {
   return s.comparisons.find((c) => c.id === comparisonId);
+}
+
+// ---------- Dialectical intelligence actions (LIFEOS-011) ----------
+
+/** Persist a completed inquiry (a reasoning aid, never a Constitution change). */
+export function saveInquiry(inquiry: Inquiry): void {
+  setState({ ...state, inquiries: [inquiry, ...state.inquiries] });
+}
+
+/**
+ * Replace an inquiry with an evolved version (the evolver has already pushed
+ * the prior result into append-only `history`). Preserves list position.
+ */
+export function updateInquiry(inquiry: Inquiry): void {
+  setState({
+    ...state,
+    inquiries: state.inquiries.map((i) => (i.id === inquiry.id ? inquiry : i)),
+  });
+}
+
+function patchInquiry(inquiryId: string, patch: (i: Inquiry) => Inquiry): void {
+  setState({
+    ...state,
+    inquiries: state.inquiries.map((i) => (i.id === inquiryId ? patch(i) : i)),
+  });
+}
+
+/** Append a human judgment on one inquiry insight (append-only). */
+export function judgeInquiryInsight(
+  inquiryId: string,
+  insightRef: string,
+  decision: ComparisonDecision,
+  note?: string,
+): void {
+  const at = now();
+  patchInquiry(inquiryId, (i) => ({
+    ...i,
+    judgments: [...i.judgments, { insightRef, decision, at, ...(note ? { note } : {}) }],
+    updatedAt: at,
+  }));
+}
+
+/** Write/replace the user's own provisional conclusion (also sets status). */
+export function setInquiryConclusion(inquiryId: string, text: string, status: InquiryStatus = "provisional"): void {
+  patchInquiry(inquiryId, (i) => ({ ...i, provisionalConclusion: text.trim() || undefined, status, updatedAt: now() }));
+}
+
+export function setInquiryStatus(inquiryId: string, status: InquiryStatus): void {
+  patchInquiry(inquiryId, (i) => ({ ...i, status, updatedAt: now() }));
+}
+
+export function inquiryById(s: StoreState, inquiryId: string): Inquiry | undefined {
+  return s.inquiries.find((i) => i.id === inquiryId);
 }

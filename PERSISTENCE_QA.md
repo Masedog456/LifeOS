@@ -33,7 +33,15 @@
    Additive and rerunnable; it does not touch migrations 0001–0004, existing
    rows, other tables, or their RLS. Comparison itself sends only a small,
    capped evidence packet to the AI route — never whole sources.
-6. **Project Settings → API**: copy the **Project URL** and the **anon
+6. Then run `supabase/migrations/0006_dialectical_intelligence.sql`
+   (LIFEOS-011 — adds the `inquiries` table: one row per saved dialectical
+   inquiry with jsonb `inputs`/`evidence`/`result`/`history`/`judgments`,
+   own-rows RLS with full CRUD so append-only history/judgments and the user's
+   provisional conclusion can be added to an existing row). Additive and
+   rerunnable; it does not touch migrations 0001–0005, existing rows, other
+   tables, or their RLS. Inquiry sends only a small, capped evidence packet to
+   the AI route — never whole sources.
+7. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -112,6 +120,15 @@ changes runtime behavior.
       claims (bad evidence ids) dropped from conclusions + flagged; saved
       comparison persists after refresh; 5-source select cap + 6th disabled;
       belief-vs-sources runs. (15/15 automated checks, mock mode.)
+- [x] **Inquiry (LIFEOS-011):** investigate a question with 2 sources →
+      structured dialectic; affirmative/negative cases + counterarguments cite
+      exact evidence chips; terminology disputes preserved; challenge a belief
+      (relation-to-beliefs shown); accept an insight → Belief Inbox (proposal +
+      capture, Constitution unchanged); save a provisional conclusion + status;
+      unsupported AI assertions dropped from conclusions + flagged; evolve with
+      an added source → prior result kept in append-only history + conclusion
+      preserved; 5-source cap + verification confirm; persistence after refresh.
+      (22/22 automated checks, mock mode.)
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
@@ -152,6 +169,9 @@ changes runtime behavior.
 - [ ] Saved comparisons sync: create a comparison in Browser A → it appears
       in Browser B (same email). A second account cannot read it (RLS on
       `comparisons`).
+- [ ] Saved inquiries sync: create an inquiry (and evolve it) in Browser A →
+      it appears in Browser B with its full append-only history. A second
+      account cannot read it (RLS on `inquiries`).
 
 ## C. Real Anthropic (CREDENTIAL-DEPENDENT, pending)
 

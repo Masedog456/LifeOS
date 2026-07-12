@@ -23,9 +23,17 @@ export default function ComparisonDetailPage() {
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
-      <Link href="/compare" className="text-sm text-zinc-500 underline-offset-4 hover:underline">
-        ← Compare
-      </Link>
+      <div className="flex items-center justify-between gap-3">
+        <Link href="/compare" className="text-sm text-zinc-500 underline-offset-4 hover:underline">
+          ← Compare
+        </Link>
+        <Link
+          href={`/inquiry?comparison=${comparison.id}&q=${encodeURIComponent(comparison.question)}`}
+          className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+        >
+          Investigate this question →
+        </Link>
+      </div>
       <div className="mt-4">
         <ComparisonResult comparison={comparison} />
       </div>

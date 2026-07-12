@@ -165,6 +165,52 @@ Constitution automatically.
   state blob. Entry points: Nav, Library, Reader ("compare with another
   source"), Constitution ("compare this belief with sources").
 
+## Dialectical intelligence (LIFEOS-011 — implemented)
+
+Structured reasoning is **implemented** on top of the retrieval (LIFEOS-009)
+and comparison (LIFEOS-010) layers. An **inquiry** investigates one question
+through evidence, arguments, objections, and unresolved tensions — it never
+decides what the user must believe, and never changes the Constitution.
+
+- **Evidence packet** (`lib/dialectic/evidence.ts`). `buildInquiryEvidence`
+  reuses the comparison evidence builder for source/belief/passage inputs,
+  then appends dialectic-specific evidence — belief **revisions**, prior
+  **comparison findings**, and **terminology** disputes — continuing the same
+  `E1…En` id sequence. Same per-source + total caps; whole books are never
+  sent.
+- **One structured call, then verification** (`lib/dialectic/run.ts`). Packet
+  → a single `dialectic` call on `/api/ai` → strict validation
+  (`lib/dialectic/schema.ts`) that **drops any substantive assertion whose
+  `evidenceIds` are not in the packet** (flagged, never shown as grounded) →
+  optional `dialectic_verify` second pass for ≥4 sources. The mock
+  (`lib/mockDialectic.ts`) is deliberately honest: it derives an affirmative
+  case from question/word overlap and states plainly that it cannot detect a
+  genuine counter-position, rather than fabricating fake symmetric balance.
+- **Argument quality** (Phase 5). Points carry an `argType` (premise /
+  conclusion / objection / rebuttal / qualification / analogy / definition /
+  empirical / interpretive / theological / personal_judgment); the schema
+  names reasoning defects (invalid inference, hidden assumption, equivocation,
+  circular reasoning, unsupported generalization) only when present, flags
+  false-certainty language ("proves", "definitively") over interpretive
+  evidence, and never treats all disagreement as logical contradiction.
+- **Strict result** (`DialecticResultData`): question, definitions,
+  assumptions, strongest affirmative/negative cases, supporting evidence,
+  counterarguments, rebuttals, terminology disputes, distinctions, unresolved
+  ambiguities, possible syntheses, what-would-change-the-conclusion, questions
+  for the human, relation-to-beliefs, reasoning issues, limitations/coverage.
+- **Human judgment + evolution** (`components/DialecticResult.tsx`,
+  `app/inquiry/[id]`). Each insight is a proposal: Accept/Rewrite → the
+  existing Belief Inbox, Question, Reject, or save without adopting. The user
+  writes their own provisional conclusion and sets status
+  (open/provisional/unresolved/resolved). Re-running with added sources pushes
+  the prior result into **append-only `history`** — reasoning is never
+  overwritten.
+- **Persistence.** One row (`inquiries`, migration
+  `0006_dialectical_intelligence.sql`) with jsonb `inputs`/`evidence`/
+  `result`/`history`/`judgments`, own-rows RLS. Entry points: Nav, Compare
+  ("investigate this question"), Constitution ("challenge this belief"),
+  Reader ("investigate this passage").
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

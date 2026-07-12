@@ -24,6 +24,45 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-12
+- **LIFEOS-011 — Dialectical intelligence: implemented.** A dialectical
+  inquiry workspace that investigates one question through evidence,
+  arguments, objections, and unresolved tensions — without letting AI decide
+  what the user must believe, and never auto-changing the Constitution. Built
+  on the retrieval + comparison layers. Evidence packet
+  (`lib/dialectic/evidence.ts`) reuses `buildEvidence` for source/belief/
+  passage inputs, then appends belief **revisions**, prior **comparison
+  findings**, and **terminology** disputes, continuing the `E1…En` id
+  sequence; same caps. Flow: packet → **one** structured `dialectic` call on
+  the single `/api/ai` route → strict validation (`lib/dialectic/schema.ts`
+  drops any substantive assertion whose evidence ids aren't in the packet →
+  flagged) → **optional** `dialectic_verify` second pass for ≥4 sources. Mock
+  (`lib/mockDialectic.ts`) is honest: derives an affirmative case from
+  question/word overlap and states plainly it cannot detect a genuine
+  counter-position (no fake symmetric balance). Strict `DialecticResultData`:
+  question, definitions, assumptions, strongest affirmative/negative cases,
+  supporting evidence, counterarguments, rebuttals, terminology disputes,
+  distinctions, unresolved ambiguities, possible syntheses, what-would-change,
+  questions-for-human, relation-to-beliefs, reasoning issues, limitations.
+  Argument quality (Phase 5): `argType` tags (premise/conclusion/objection/
+  rebuttal/qualification/analogy/definition/empirical/interpretive/theological/
+  personal_judgment), named reasoning defects only when present, false-
+  certainty language flagged, disagreement ≠ contradiction. Human judgment
+  (`components/DialecticResult`): each insight → Accept/Rewrite into the
+  existing Belief Inbox, Question, Reject, or save without adopting; write your
+  own provisional conclusion; set status (open/provisional/unresolved/
+  resolved). Evolution: re-running with added sources pushes the prior result
+  into **append-only `history`** (never overwritten). Cost controls: max 5
+  sources, per-source + total caps, approximate call count, partial-coverage
+  warning, confirmation for ≥4-source runs. Persistence: `inquiries` state +
+  adapters + additive migration `0006_dialectical_intelligence.sql` (jsonb
+  row, own-rows RLS, rerunnable; migrations 0001–0005 untouched). New
+  `/inquiry` workspace + `/inquiry/[id]`; entry points from Nav, Compare,
+  Constitution, Reader. Verified: **22/22 dialectic checks** + **15/15
+  comparison + 9/9 regression + 12/12 long-source + 16/16 PDF + 11/11
+  retrieval**, zero runtime errors; `lint`/`build` green. No graph UI, agents,
+  or auto belief changes; still one AI route. Supabase sync/RLS/cross-device
+  of `inquiries` are code-complete but credential-pending.
+- Date: 2026-07-12
 - **LIFEOS-010 — Comparative intelligence: implemented.** Cross-source
   comparison over 2–5 sources (or a belief + sources) that preserves genuine
   differences and exact provenance. Flow is **deterministic-first**: a capped
@@ -832,3 +871,35 @@ scope or order.
   `comparisons` (sync/RLS/cross-device) is code-complete but credential-
   pending. No graph UI, megathreads, background agents, or new AI routes
   beyond the single `/api/ai`.
+- 2026-07-12 — Implemented **LIFEOS-011 dialectical intelligence**. New:
+  `lib/dialectic/evidence.ts` (inquiry evidence packet — reuses comparison
+  evidence + belief revisions + comparison findings + terminology, continuing
+  the `E1…En` sequence), `lib/dialectic/schema.ts` (strict dialectic
+  validation — drops ungrounded substantive assertions, flags false-certainty/
+  flattening, clamps argType/fallacy tags), `lib/dialectic/run.ts`
+  (orchestrator: packet → one `dialectic` call → validate → optional
+  `dialectic_verify` for ≥4 sources; plus `evolveInquiryFlow` that appends to
+  history), `lib/mockDialectic.ts` (honest deterministic dialectic, no fake
+  balance), `components/DialecticResult.tsx` (result view + per-insight human
+  judgment), `app/inquiry/page.tsx` + `app/inquiry/[id]/page.tsx` (workspace,
+  detail with provisional conclusion / status / evolve / append-only history),
+  `supabase/migrations/0006_dialectical_intelligence.sql`. Extended
+  `types/mvp.ts` (`InquiryInputRef`, `ArgumentType`, `FallacyType`,
+  `DialecticPoint`, `DialecticResultData` + sub-types, `Inquiry`,
+  `InquiryRevision`, `StoreState.inquiries`; widened `EvidenceKind` +
+  `EvidenceGroup.ref`), `app/api/ai/route.ts` (`dialectic` +
+  `dialectic_verify` tasks, 4096 max_tokens for dialectic), `lib/aiClient.ts`
+  (`runDialectic` / `verifyDialectic`), `lib/mvpStore.ts` (`inquiries` state +
+  `saveInquiry` / `updateInquiry` / `judgeInquiryInsight` /
+  `setInquiryConclusion` / `setInquiryStatus`), `lib/persistence.ts`,
+  `lib/adapters/localAdapter.ts`, `lib/adapters/supabaseAdapter.ts` (load/
+  save/delete + row mappers). Entry points added to `components/Nav.tsx`,
+  `app/compare/[id]/page.tsx`, `app/constitution/page.tsx`,
+  `app/library/[id]/page.tsx`. Insights flow into the existing Belief Inbox;
+  the Constitution is never changed automatically; reasoning history is
+  append-only. Verified 22/22 dialectic + 15/15 comparison + 9/9 regression +
+  12/12 long-source + 16/16 PDF + 11/11 retrieval checks, zero runtime errors;
+  `lint`=0, `build`=0. Supabase persistence of `inquiries` (sync/RLS/cross-
+  device) is code-complete but credential-pending. No graph UI, autonomous
+  agents, auto Constitution changes, or new AI routes beyond the single
+  `/api/ai`.

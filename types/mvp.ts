@@ -292,7 +292,11 @@ export type EvidenceKind =
   | "quote"
   | "concept"
   | "claim"
-  | "belief";
+  | "belief"
+  // ---- dialectical inquiry (LIFEOS-011) ----
+  | "revision"
+  | "comparison_finding"
+  | "terminology";
 
 /**
  * One deterministic, provenance-bearing evidence item. Built from existing
@@ -318,7 +322,8 @@ export interface EvidenceItem {
 
 /** Evidence grouped per selected material, with coverage honesty. */
 export interface EvidenceGroup {
-  ref: ComparisonInputRef;
+  /** A comparison input, or (LIFEOS-011) a dialectical-inquiry input. */
+  ref: ComparisonInputRef | InquiryInputRef;
   coverage: Coverage | null;
   /** True when only part of the source was analyzed/extracted. */
   partial: boolean;
@@ -410,6 +415,124 @@ export interface Comparison {
   judgments: ComparisonJudgment[];
 }
 
+// ---------- Dialectical intelligence (LIFEOS-011) ----------
+
+export type InquiryInputKind = "source" | "belief" | "passage" | "comparison";
+
+export interface InquiryInputRef {
+  kind: InquiryInputKind;
+  label: string;
+  sourceId?: string;
+  beliefId?: string;
+  comparisonId?: string;
+  quote?: string;
+  page?: number;
+}
+
+/** Argument taxonomy (Phase 5) — not every disagreement is a contradiction. */
+export type ArgumentType =
+  | "premise"
+  | "conclusion"
+  | "objection"
+  | "rebuttal"
+  | "qualification"
+  | "analogy"
+  | "definition"
+  | "empirical"
+  | "interpretive"
+  | "theological"
+  | "personal_judgment";
+
+/** Reasoning defects the dialectic may name (Phase 5) — cautiously. */
+export type FallacyType =
+  | "invalid_inference"
+  | "hidden_assumption"
+  | "equivocation"
+  | "circular_reasoning"
+  | "unsupported_generalization";
+
+/** A grounded dialectical assertion — MUST cite evidence. */
+export interface DialecticPoint {
+  statement: string;
+  evidenceIds: string[];
+  /** Optional argument-type tag. */
+  argType?: ArgumentType;
+}
+
+export interface DialecticDefinition {
+  term: string;
+  definition: string;
+}
+
+export interface ReasoningIssue {
+  kind: FallacyType;
+  note: string;
+  evidenceIds: string[];
+}
+
+/** Strict structured dialectic (Phase 4). Substantive assertions cite evidence. */
+export interface DialecticResultData {
+  question: string;
+  definitions: DialecticDefinition[];
+  assumptions: DialecticPoint[];
+  affirmativeCase: DialecticPoint[];
+  negativeCase: DialecticPoint[];
+  supportingEvidence: PositionEvidence[];
+  counterarguments: DialecticPoint[];
+  rebuttals: DialecticPoint[];
+  terminologyDisputes: TerminologyDifference[];
+  distinctions: string[];
+  unresolvedAmbiguities: string[];
+  possibleSyntheses: DialecticPoint[];
+  evidenceThatWouldChange: string[];
+  questionsForHuman: string[];
+  relationToBeliefs: DialecticPoint[];
+  reasoningIssues: ReasoningIssue[];
+  limitations: string[];
+  coverageNote: string;
+  /** Assertions dropped in verification for citing missing/invalid evidence. */
+  flagged?: string[];
+}
+
+export type InquiryStatus = "open" | "provisional" | "unresolved" | "resolved";
+
+/** One append-only prior state of an inquiry (never overwritten). */
+export interface InquiryRevision {
+  at: ISO;
+  result: DialecticResultData;
+  source: "ai" | "mock";
+  /** Labels of materials newly added at this step. */
+  addedInputs?: string[];
+  note?: string;
+}
+
+/** A saved dialectical inquiry — a reasoning aid, never an automatic verdict. */
+export interface Inquiry {
+  id: string;
+  question: string;
+  inputs: InquiryInputRef[];
+  sourceIds: string[];
+  beliefIds: string[];
+  comparisonIds: string[];
+  evidence: EvidenceItem[];
+  /** Latest structured dialectic. */
+  result: DialecticResultData;
+  /** Append-only history of prior results (older first). */
+  history: InquiryRevision[];
+  aiModel: string;
+  source: "ai" | "mock";
+  coverage: Coverage | null;
+  partial: boolean;
+  verified: boolean;
+  status: InquiryStatus;
+  /** The user's own provisional conclusion, if written. */
+  provisionalConclusion?: string;
+  /** Append-only human judgments on the insights. */
+  judgments: ComparisonJudgment[];
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -417,4 +540,5 @@ export interface StoreState {
   sources: KnowledgeSource[];
   feedback: FeedbackEntry[];
   comparisons: Comparison[];
+  inquiries: Inquiry[];
 }

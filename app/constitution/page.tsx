@@ -111,13 +111,19 @@ function BeliefRow({ belief }: { belief: Belief }) {
             {belief.judgments.length === 1 ? "" : "s"}
           </p>
 
-          {/* Compare this belief against sources (entry point) */}
-          <div>
+          {/* Compare / challenge this belief (entry points) */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Link
               href={`/compare?belief=${belief.id}`}
               className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
             >
               Compare this belief with sources →
+            </Link>
+            <Link
+              href={`/inquiry?belief=${belief.id}&q=${encodeURIComponent(`What is the strongest objection to: ${belief.text}`)}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Challenge this belief →
             </Link>
           </div>
 
