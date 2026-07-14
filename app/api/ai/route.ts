@@ -31,6 +31,7 @@ import { mockCompare } from "@/lib/mockCompare";
 import { mockDialectic } from "@/lib/mockDialectic";
 import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
 import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFormation";
+import { mockReasoning } from "@/lib/mockReasoning";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -50,7 +51,9 @@ type Task =
   | "thread_synthesis"
   | "practice_suggest"
   | "weekly_synthesis"
-  | "alignment_reflection";
+  | "alignment_reflection"
+  | "reasoning_synthesis"
+  | "reasoning_verify";
 
 const ALLOWED_TASKS = new Set<Task>([
   "beliefs",
@@ -68,6 +71,8 @@ const ALLOWED_TASKS = new Set<Task>([
   "practice_suggest",
   "weekly_synthesis",
   "alignment_reflection",
+  "reasoning_synthesis",
+  "reasoning_verify",
 ]);
 
 const MAX_INPUT_CHARS = 50_000;
@@ -378,6 +383,25 @@ function alignmentReflectionPrompt(input: AiInput): string {
   ].join("\n");
 }
 
+function reasoningPrompt(input: AiInput): string {
+  return [
+    `You are reasoning across a user's knowledge system (mode: ${input.title}).`,
+    "Deterministic analysis has already produced the grounded findings; your job",
+    "is to add a SHORT higher-level narrative layer. Use ONLY the records below;",
+    "cite them by id in evidenceIds. Never invent evidence or causal influence.",
+    "Be cautious — do not overclaim certainty.",
+    "",
+    "Return ONLY JSON: { \"keyFindings\": [ { \"statement\": string, \"evidenceIds\":",
+    "string[] } ], \"alternativeInterpretations\": string[], \"questionsForHuman\":",
+    "string[], \"limitations\": string[] }",
+    "",
+    `Question: ${input.question}`,
+    "",
+    "Records:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
 function promptFor(input: AiInput): string {
   const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (input.task) {
@@ -385,7 +409,10 @@ function promptFor(input: AiInput): string {
       return comparePrompt(input);
     case "compare_verify":
     case "dialectic_verify":
+    case "reasoning_verify":
       return verifyPrompt(input);
+    case "reasoning_synthesis":
+      return reasoningPrompt(input);
     case "dialectic":
       return dialecticPrompt(input);
     case "thread_synthesis":
@@ -478,6 +505,10 @@ function mockFor(input: AiInput): unknown {
       return mockWeeklySynthesis({ evidence: input.evidence, summary: input.question });
     case "alignment_reflection":
       return mockAlignment({ evidence: input.evidence });
+    case "reasoning_synthesis":
+      return mockReasoning({ evidence: input.evidence, question: input.question, mode: input.title });
+    case "reasoning_verify":
+      return { cautions: [], removeStatements: [] };
     case "beliefs":
     default:
       return mockProposals(input.text);
@@ -503,8 +534,10 @@ function parseFor(input: AiInput, raw: string): unknown {
     case "practice_suggest":
     case "weekly_synthesis":
     case "alignment_reflection":
+    case "reasoning_synthesis":
+    case "reasoning_verify":
       // Return the raw parsed object; strict validation happens client-side
-      // (lib/comparison, lib/dialectic, lib/megathread, lib/formation).
+      // (lib/comparison, lib/dialectic, lib/megathread, lib/formation, lib/reasoning).
       return JSON.parse(jsonSlice(raw, "{"));
     case "beliefs":
     default: {
@@ -518,7 +551,7 @@ function parseFor(input: AiInput, raw: string): unknown {
 function maxTokensFor(task: Task): number {
   // Structured comparison/dialectic/synthesis outputs are large; more room.
   if (task === "dialectic") return 4096;
-  if (task === "compare" || task === "thread_synthesis") return 3072;
+  if (task === "compare" || task === "thread_synthesis" || task === "reasoning_synthesis") return 3072;
   return 1024;
 }
 
@@ -606,6 +639,7 @@ export async function POST(request: Request) {
   const EVIDENCE_TASKS = new Set<Task>([
     "compare", "compare_verify", "dialectic", "dialectic_verify", "thread_synthesis",
     "practice_suggest", "weekly_synthesis", "alignment_reflection",
+    "reasoning_synthesis", "reasoning_verify",
   ]);
   const hasInput =
     input.task === "reduce_summary"

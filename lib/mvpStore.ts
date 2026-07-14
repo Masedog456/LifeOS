@@ -39,6 +39,8 @@ import type {
   ReviewSurfacedItem,
   ReviewType,
   WeeklySynthesisData,
+  ReasoningQuery,
+  ReasoningStatus,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
@@ -57,6 +59,7 @@ const EMPTY_STATE: StoreState = {
   reflections: [],
   practices: [],
   reviews: [],
+  reasonings: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -153,6 +156,12 @@ export function hydrate() {
           acceptedPracticeIds: asArray<string>(r?.acceptedPracticeIds),
           unresolvedQuestions: asArray<string>(r?.unresolvedQuestions),
         })),
+        reasonings: asArray<ReasoningQuery>(parsed.reasonings).map((q) => ({
+          ...q,
+          evidence: asArray<ReasoningQuery["evidence"][number]>(q?.evidence),
+          history: asArray<ReasoningQuery["history"][number]>(q?.history),
+          judgments: asArray<ReasoningQuery["judgments"][number]>(q?.judgments),
+        })),
       };
       emit();
     }
@@ -166,7 +175,7 @@ export function resetStore() {
   clearState();
   setState({
     captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
-    comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [],
+    comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [],
   });
 }
 
@@ -914,4 +923,68 @@ export function completeReview(reviewId: string): void {
 
 export function reviewById(s: StoreState, reviewId: string): ReviewSession | undefined {
   return s.reviews.find((r) => r.id === reviewId);
+}
+
+// ---------- Reasoning engine actions (LIFEOS-014) ----------
+
+/** Persist a completed reasoning query (a reasoning aid, never a Constitution change). */
+export function saveReasoning(query: ReasoningQuery): void {
+  setState({ ...state, reasonings: [query, ...state.reasonings] });
+}
+
+/** Replace a reasoning query with a re-run version (history already appended). */
+export function updateReasoning(query: ReasoningQuery): void {
+  setState({ ...state, reasonings: state.reasonings.map((q) => (q.id === query.id ? query : q)) });
+}
+
+function patchReasoning(reasoningId: string, patch: (q: ReasoningQuery) => ReasoningQuery): void {
+  setState({ ...state, reasonings: state.reasonings.map((q) => (q.id === reasoningId ? patch(q) : q)) });
+}
+
+/** Append a human judgment on one reasoning finding (append-only). */
+export function judgeReasoningInsight(
+  reasoningId: string,
+  insightRef: string,
+  decision: ComparisonDecision,
+  note?: string,
+): void {
+  const at = now();
+  patchReasoning(reasoningId, (q) => ({
+    ...q,
+    judgments: [...q.judgments, { insightRef, decision, at, ...(note ? { note } : {}) }],
+    updatedAt: at,
+  }));
+}
+
+export function setReasoningConclusion(reasoningId: string, text: string, status: ReasoningStatus = "provisional"): void {
+  patchReasoning(reasoningId, (q) => ({ ...q, provisionalConclusion: text.trim() || undefined, status, updatedAt: now() }));
+}
+
+export function setReasoningStatus(reasoningId: string, status: ReasoningStatus): void {
+  patchReasoning(reasoningId, (q) => ({ ...q, status, updatedAt: now() }));
+}
+
+/** Attach a reasoning result to a Megathread (adds a note + logs a revision). */
+export function attachReasoningToThread(reasoningId: string, threadId: string): void {
+  const q = state.reasonings.find((x) => x.id === reasoningId);
+  if (!q) return;
+  const at = now();
+  const note = `Reasoning attached: ${q.question || q.mode}`;
+  setState({
+    ...state,
+    megathreads: state.megathreads.map((t) =>
+      t.id === threadId
+        ? {
+            ...t,
+            notes: [t.notes, note].filter(Boolean).join("\n"),
+            revisions: [...t.revisions, { at, note }],
+            updatedAt: at,
+          }
+        : t,
+    ),
+  });
+}
+
+export function reasoningById(s: StoreState, reasoningId: string): ReasoningQuery | undefined {
+  return s.reasonings.find((q) => q.id === reasoningId);
 }

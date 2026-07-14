@@ -302,6 +302,56 @@ automatically.
   `review_sessions` (migration `0008_formation_engine.sql`; the reflection
   response is immutable via a DB trigger; own-rows RLS).
 
+## Reasoning engine (LIFEOS-014 — implemented)
+
+Higher-order reasoning across the whole knowledge system is **implemented**,
+deterministic-first. It answers questions like "which beliefs are weakly
+supported?", "what contradictions exist?", "what shaped this view?". No
+autonomous agents, no graph UI, and it never changes the Constitution.
+
+- **Record** (`ReasoningQuery`): question, one of eight modes, optional scope
+  (entire library / selected sources / beliefs / threads / comparisons /
+  inquiries), the evidence packet (references, not text copies), the strict
+  structured result, human judgments, provisional conclusion, status, and an
+  append-only `history` of prior runs.
+- **Modes**: support audit · contradiction audit · influence trace ·
+  assumption audit · belief-impact analysis · unresolved-question synthesis ·
+  change-over-time analysis · open inquiry. One workspace, not a page per mode.
+- **Evidence graph** (`lib/reasoning/graph.ts`). `resolveScope` resolves a
+  scope to concrete id sets and expands conservatively from a selection;
+  `buildReasoningGraph` builds an INTERNAL node/edge structure (source, quote,
+  belief, revision, comparison, inquiry, thread, reflection, practice …; edges
+  derived_from / revised_from / references / compared_with / investigated_by /
+  belongs_to …) plus a capped evidence packet whose ids ARE real record ids.
+  Never rendered as a graph, never duplicates source text.
+- **Deterministic passes** (`lib/reasoning/passes.ts`) run BEFORE any AI and
+  produce the grounded result: support audit (counts, **no truth score**),
+  contradiction audit (comparison disagreements, inquiry both-sided readings,
+  opposing-polarity belief pairs, revision reversals — each classified
+  cautiously so a definitional difference is not a logical contradiction),
+  influence trace (source→capture→belief→revision, comparison/inquiry→belief),
+  assumption audit (recurrence-deduped), belief-impact (may-support /
+  may-challenge / affected threads / reopened inquiries — mutates nothing),
+  change-over-time, and unresolved synthesis.
+- **AI layer** (`reasoning_synthesis` + optional `reasoning_verify`). One call
+  adds a narrative key-findings layer over the deterministic result; validation
+  (`lib/reasoning/schema.ts`) drops any finding whose evidence ids aren't in
+  the packet (flagged) and flags overconfident wording. A verification pass runs
+  only for large graphs (≥30 nodes). Mock fallback echoes the deterministic seed.
+- **Cost controls** (Phase 6). Max scope sources, max evidence packet size,
+  approximate call count + record/evidence counts shown, partial-coverage
+  warning, explicit confirmation for expensive (≥2-call) runs, no background
+  reasoning.
+- **Human judgment + history** (`app/reason/[id]`,
+  `components/ReasoningResult.tsx`). Accept a finding → Belief Inbox, rewrite,
+  question, reject; mark a candidate contradiction resolved/unresolved; write a
+  provisional conclusion; reopen a referenced inquiry; attach the result to a
+  Megathread (adds a note); re-run (pushes the prior result into append-only
+  history). Persisted as `reasonings` (migration `0009_reasoning_engine.sql`,
+  own-rows RLS). Entry points: Constitution belief ("audit support") + header
+  ("find tensions"), Reader source ("trace influence"), Megathread ("reason
+  across this thread"), Nav.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

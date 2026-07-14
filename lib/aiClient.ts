@@ -19,6 +19,7 @@ import { mockCompare } from "@/lib/mockCompare";
 import { mockDialectic } from "@/lib/mockDialectic";
 import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
 import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFormation";
+import { mockReasoning } from "@/lib/mockReasoning";
 import type { EvidenceItem } from "@/types/mvp";
 
 export type AiSource = "ai" | "mock";
@@ -178,5 +179,23 @@ export function alignmentReflection(args: { evidence: EvidenceItem[] }) {
   return call<unknown>(
     { task: "alignment_reflection", evidence: toWire(args.evidence) },
     () => mockAlignment({ evidence: args.evidence }),
+  );
+}
+
+// ---------- Reasoning engine (LIFEOS-014) ----------
+
+/** One AI synthesis over the reasoning packet. RAW object (validated by caller). */
+export function reasoningSynthesis(args: { evidence: EvidenceItem[]; question: string; mode: string }) {
+  return call<unknown>(
+    { task: "reasoning_synthesis", evidence: toWire(args.evidence), question: args.question, title: args.mode },
+    () => mockReasoning({ evidence: args.evidence, question: args.question, mode: args.mode }),
+  );
+}
+
+/** Optional verification pass for large-scope reasoning. */
+export function verifyReasoning(evidence: EvidenceItem[], draft: unknown) {
+  return call<{ cautions?: string[]; removeStatements?: string[] }>(
+    { task: "reasoning_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
+    () => ({ cautions: [], removeStatements: [] }),
   );
 }

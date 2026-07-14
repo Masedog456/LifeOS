@@ -783,6 +783,142 @@ export interface ReviewSession {
   completedAt?: ISO;
 }
 
+// ---------- Reasoning engine (LIFEOS-014) ----------
+
+export type ReasoningMode =
+  | "support_audit"
+  | "contradiction_audit"
+  | "influence_trace"
+  | "assumption_audit"
+  | "belief_impact"
+  | "unresolved_synthesis"
+  | "change_over_time"
+  | "open_inquiry";
+
+export type ReasoningScopeKind =
+  | "all"
+  | "sources"
+  | "beliefs"
+  | "threads"
+  | "comparisons"
+  | "inquiries";
+
+export interface ReasoningScope {
+  kind: ReasoningScopeKind;
+  sourceIds?: string[];
+  beliefIds?: string[];
+  threadIds?: string[];
+  comparisonIds?: string[];
+  inquiryIds?: string[];
+  /** For belief_impact: a proposed belief NOT yet in the Constitution. */
+  proposedBelief?: string;
+}
+
+/** Internal reasoning-graph node (never rendered as a graph). */
+export type ReasoningNodeType =
+  | "source" | "chunk" | "quote" | "concept" | "capture" | "proposal"
+  | "belief" | "revision" | "comparison" | "inquiry" | "megathread"
+  | "reflection" | "practice" | "review";
+
+export interface ReasoningNode {
+  id: string;
+  type: ReasoningNodeType;
+  refId: string;
+  label: string;
+  at?: ISO;
+}
+
+export type ReasoningEdgeType =
+  | "supports" | "challenges" | "derived_from" | "revised_from" | "references"
+  | "belongs_to" | "influenced_by" | "questioned_by" | "compared_with" | "investigated_by";
+
+export interface ReasoningEdge {
+  from: string;
+  to: string;
+  type: ReasoningEdgeType;
+}
+
+/** A finding that MUST cite record/evidence ids. */
+export interface ReasoningFinding {
+  statement: string;
+  evidenceIds: string[];
+}
+
+/** A cautiously-classified tension — never all flattened to "contradiction". */
+export interface ReasoningTension extends ReasoningFinding {
+  kind: ContradictionKind;
+}
+
+export interface InfluenceChain {
+  /** Ordered labels, e.g. ["Source: X", "Quote", "Belief: Y"]. */
+  chain: string[];
+  evidenceIds: string[];
+}
+
+/** Deterministic support-audit counts for one belief (no truth score). */
+export interface SupportAudit {
+  beliefId: string;
+  beliefText: string;
+  supportingSources: number;
+  challengingSources: number;
+  supportingQuotes: number;
+  revisions: number;
+  unresolvedQuestions: number;
+  evidenceDiversity: number;
+  evidenceIds: string[];
+}
+
+export interface ReasoningResultData {
+  question: string;
+  mode: ReasoningMode;
+  scopeSummary: string;
+  keyFindings: ReasoningFinding[];
+  supportingEvidence: PositionEvidence[];
+  challengingEvidence: PositionEvidence[];
+  candidateContradictions: ReasoningTension[];
+  assumptions: ReasoningFinding[];
+  influenceChains: InfluenceChain[];
+  affectedBeliefs: ReasoningFinding[];
+  supportAudits: SupportAudit[];
+  unresolvedQuestions: string[];
+  alternativeInterpretations: string[];
+  limitations: string[];
+  coverageNote: string;
+  questionsForHuman: string[];
+  flagged?: string[];
+}
+
+export type ReasoningStatus = "open" | "provisional" | "resolved";
+
+export interface ReasoningRevision {
+  at: ISO;
+  result: ReasoningResultData;
+  source: "ai" | "mock";
+  note?: string;
+  scopeChanged?: boolean;
+}
+
+export interface ReasoningQuery {
+  id: string;
+  question: string;
+  mode: ReasoningMode;
+  scope: ReasoningScope;
+  evidence: EvidenceItem[];
+  result: ReasoningResultData;
+  /** Append-only prior results (older first). */
+  history: ReasoningRevision[];
+  aiModel: string;
+  source: "ai" | "mock";
+  coverage: Coverage | null;
+  partial: boolean;
+  verified: boolean;
+  status: ReasoningStatus;
+  provisionalConclusion?: string;
+  judgments: ComparisonJudgment[];
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -795,4 +931,5 @@ export interface StoreState {
   reflections: Reflection[];
   practices: PracticeCandidate[];
   reviews: ReviewSession[];
+  reasonings: ReasoningQuery[];
 }

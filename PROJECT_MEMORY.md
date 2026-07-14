@@ -24,6 +24,44 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-12
+- **LIFEOS-014 — Reasoning engine: implemented.** Higher-order, deterministic-
+  first reasoning across the whole knowledge system (sources, beliefs,
+  revisions, comparisons, inquiries, Megathreads, reflections, practices). No
+  autonomous agents, no graph UI; the Constitution never changes automatically.
+  `ReasoningQuery` record: question, one of 8 modes, optional scope (all /
+  selected sources|beliefs|threads|comparisons|inquiries), evidence packet
+  (references, not text copies), strict structured result, judgments,
+  provisional conclusion, status, append-only `history`. Evidence graph
+  (`lib/reasoning/graph.ts`): `resolveScope` (conservative expansion) +
+  `buildReasoningGraph` build an INTERNAL node/edge structure + a capped
+  packet whose ids ARE real record ids (never a graph UI, never duplicating
+  text). Deterministic passes (`lib/reasoning/passes.ts`) run before any AI and
+  produce the grounded result: support audit (counts, **no truth score**),
+  contradiction audit (comparison disagreements / inquiry both-sided readings /
+  opposing-polarity belief pairs / revision reversals — cautiously classified,
+  a definitional difference ≠ a logical contradiction), influence trace
+  (source→capture→belief→revision; comparison/inquiry→belief), assumption audit
+  (recurrence-deduped), belief-impact (may-support/challenge, affected threads,
+  reopened inquiries — mutates nothing), change-over-time, unresolved synthesis.
+  AI layer (`reasoning_synthesis` + optional `reasoning_verify`): one call adds
+  narrative key-findings validated to drop uncited claims (flagged) + flag
+  overconfidence; verify only for ≥30-node graphs; mock echoes the seed. Cost
+  controls: max scope sources, max packet size, approximate call/record counts,
+  partial-coverage warning, confirmation for ≥2-call runs, no background
+  reasoning. Human judgment (`app/reason/[id]`): accept finding→Belief Inbox /
+  rewrite / question / reject; mark a candidate contradiction resolved or
+  unresolved; provisional conclusion + status; reopen a referenced inquiry;
+  attach the result to a Megathread; re-run pushes the prior result into
+  append-only history. Persistence: `reasonings` state + adapters + additive
+  migration `0009_reasoning_engine.sql` (own-rows RLS, rerunnable; migrations
+  0001–0008 untouched). New `/reason` + `/reason/[id]`; entry points from Nav,
+  Constitution (belief + header), Reader, Megathread. Verified: **19/19
+  reasoning checks** + **23/23 formation + 21/21 megathread + 22/22 dialectic +
+  15/15 comparison + 9/9 regression + 12/12 long-source + 16/16 PDF + 11/11
+  retrieval**, zero runtime errors; `lint`/`build` green. Still one AI route.
+  Supabase sync/RLS/cross-device of `reasonings` are code-complete but
+  credential-pending.
+- Date: 2026-07-12
 - **LIFEOS-013 — Daily formation & review: implemented.** A calm daily/weekly
   review that helps the user reconnect with past knowledge and decide what
   should change — LifeOS surfaces and asks, the human interprets and decides.
@@ -1033,3 +1071,34 @@ scope or order.
   new tables (sync/RLS/cross-device) is code-complete but credential-pending.
   No embeddings, graph UI, autonomous agents, notifications/streaks/points, or
   new AI routes beyond the single `/api/ai`.
+- 2026-07-12 — Implemented **LIFEOS-014 reasoning engine**. New:
+  `lib/reasoning/graph.ts` (scope resolution + internal evidence graph + capped
+  packet with real record-id evidence), `lib/reasoning/passes.ts` (deterministic
+  support/contradiction/influence/assumption/belief-impact/change-over-time/
+  unresolved passes — no truth scores, cautious tension classification, no
+  mutation), `lib/reasoning/schema.ts` (AI-layer validation — drop uncited
+  findings, flag overconfidence), `lib/reasoning/run.ts` (orchestrator: scope →
+  graph → deterministic pass → packet → one `reasoning_synthesis` call →
+  validate → optional `reasoning_verify` for ≥30 nodes; plus `rerunReasoning`
+  appending history), `lib/mockReasoning.ts`, `components/ReasoningResult.tsx`,
+  `app/reason/page.tsx` + `app/reason/[id]/page.tsx`,
+  `supabase/migrations/0009_reasoning_engine.sql`. Extended `types/mvp.ts`
+  (`ReasoningQuery`, `ReasoningMode`, `ReasoningScope`, `ReasoningNode`/`Edge`,
+  `ReasoningResultData`, `SupportAudit`, `ReasoningTension`, `InfluenceChain`,
+  `StoreState.reasonings`), `app/api/ai/route.ts` (`reasoning_synthesis` /
+  `reasoning_verify` tasks), `lib/aiClient.ts` (`reasoningSynthesis` /
+  `verifyReasoning`), `lib/mvpStore.ts` (reasoning state + save/update/judge/
+  conclusion/status/attach-to-thread actions), `lib/persistence.ts`,
+  `lib/adapters/localAdapter.ts`, `lib/adapters/supabaseAdapter.ts` (load/save/
+  delete + row mappers), `components/Nav.tsx` (+ flex-wrap for the fuller nav).
+  Entry points added to `app/constitution/page.tsx` (belief + header),
+  `app/library/[id]/page.tsx`, `app/threads/[id]/page.tsx`. Findings cite real
+  record ids; unsupported are dropped/flagged; a finding can enter the Belief
+  Inbox; a result can attach to a Megathread; a prior inquiry can be reopened;
+  reasoning history is append-only; the Constitution never changes
+  automatically. Verified 19/19 reasoning + 23/23 formation + 21/21 megathread +
+  22/22 dialectic + 15/15 comparison + 9/9 regression + 12/12 long-source +
+  16/16 PDF + 11/11 retrieval checks, zero runtime errors; `lint`=0, `build`=0.
+  Supabase persistence of `reasonings` (sync/RLS/cross-device) is code-complete
+  but credential-pending. No autonomous agents, graph UI, auto Constitution
+  changes, or new AI routes beyond the single `/api/ai`.

@@ -131,6 +131,12 @@ function BeliefRow({ belief }: { belief: Belief }) {
             >
               Create Megathread →
             </Link>
+            <Link
+              href={`/reason?mode=support_audit&belief=${belief.id}&q=${encodeURIComponent(`How well supported is: ${belief.text.slice(0, 50)}`)}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Audit support →
+            </Link>
           </div>
 
           {/* Related evidence — collapsed, never auto-resolving */}
@@ -255,15 +261,25 @@ export default function ConstitutionPage() {
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-16">
-      <header className="mb-10">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          What I currently believe
-        </h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          {active.length} belief{active.length === 1 ? "" : "s"} across{" "}
-          {themes.length} theme{themes.length === 1 ? "" : "s"}
-          {questioned > 0 && ` · ${questioned} still open`}
-        </p>
+      <header className="mb-10 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            What I currently believe
+          </h1>
+          <p className="mt-2 text-sm text-zinc-500">
+            {active.length} belief{active.length === 1 ? "" : "s"} across{" "}
+            {themes.length} theme{themes.length === 1 ? "" : "s"}
+            {questioned > 0 && ` · ${questioned} still open`}
+          </p>
+        </div>
+        {active.length >= 2 && (
+          <Link
+            href="/reason?mode=contradiction_audit&q=What%20tensions%20exist%20among%20my%20beliefs%3F"
+            className="shrink-0 rounded-full border border-black/[.12] px-4 py-2 text-sm font-medium hover:bg-black/[.04] dark:border-white/[.15] dark:hover:bg-white/[.06]"
+          >
+            Find tensions
+          </Link>
+        )}
       </header>
 
       <div className="flex flex-col gap-10">

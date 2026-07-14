@@ -55,6 +55,7 @@ function normalize(partial: Partial<StoreState> | null): StoreState {
     reflections: partial?.reflections ?? [],
     practices: partial?.practices ?? [],
     reviews: partial?.reviews ?? [],
+    reasonings: partial?.reasonings ?? [],
   };
 }
 

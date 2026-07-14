@@ -450,6 +450,12 @@ export default function ReaderPage() {
             >
               Add to Megathread →
             </Link>
+            <Link
+              href={`/reason?mode=influence_trace&source=${id}&q=${encodeURIComponent(`What did ${source.title} influence?`)}`}
+              className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              Trace influence →
+            </Link>
           </footer>
         </>
       )}

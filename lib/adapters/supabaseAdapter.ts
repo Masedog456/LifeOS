@@ -20,6 +20,7 @@ import type {
   Inquiry,
   Megathread,
   PracticeCandidate,
+  ReasoningQuery,
   Reflection,
   ReviewSession,
   JudgmentEntry,
@@ -50,7 +51,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -66,6 +67,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("reflections").select("*").order("created_at", { ascending: false }),
         this.client.from("practices").select("*").order("created_at", { ascending: false }),
         this.client.from("review_sessions").select("*").order("started_at", { ascending: false }),
+        this.client.from("reasonings").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -82,7 +84,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       megathreads.error ||
       reflections.error ||
       practices.error ||
-      reviews.error;
+      reviews.error ||
+      reasonings.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -110,6 +113,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       reflections: (reflections.data ?? []).map(rowToReflection),
       practices: (practices.data ?? []).map(rowToPractice),
       reviews: (reviews.data ?? []).map(rowToReview),
+      reasonings: (reasonings.data ?? []).map(rowToReasoning),
     };
   }
 
@@ -163,6 +167,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     }
     if (state.reviews.length) {
       await this.throwing(this.client.from("review_sessions").upsert(state.reviews.map(reviewToRow)));
+    }
+    if (state.reasonings.length) {
+      await this.throwing(this.client.from("reasonings").upsert(state.reasonings.map(reasoningToRow)));
     }
     this.lastState = "synced";
     this.lastError = undefined;
@@ -226,6 +233,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("reasonings").delete().eq("user_id", uid));
     await this.throwing(this.client.from("review_sessions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("practices").delete().eq("user_id", uid));
     await this.throwing(this.client.from("reflections").delete().eq("user_id", uid));
@@ -611,6 +619,49 @@ function rowToReview(r: any): ReviewSession {
     alignmentSource: (r.alignment_source ?? undefined) as ReviewSession["alignmentSource"],
     startedAt: r.started_at,
     completedAt: r.completed_at ?? undefined,
+  };
+}
+
+function reasoningToRow(q: ReasoningQuery) {
+  return {
+    id: q.id,
+    question: q.question,
+    mode: q.mode,
+    scope: q.scope,
+    evidence: q.evidence,
+    result: q.result,
+    history: q.history,
+    ai_model: q.aiModel,
+    source: q.source,
+    coverage: q.coverage,
+    partial: q.partial,
+    verified: q.verified,
+    status: q.status,
+    provisional_conclusion: q.provisionalConclusion ?? null,
+    judgments: q.judgments,
+    created_at: q.createdAt,
+    updated_at: q.updatedAt,
+  };
+}
+function rowToReasoning(r: any): ReasoningQuery {
+  return {
+    id: r.id,
+    question: r.question ?? "",
+    mode: r.mode,
+    scope: (r.scope ?? { kind: "all" }) as ReasoningQuery["scope"],
+    evidence: (r.evidence ?? []) as ReasoningQuery["evidence"],
+    result: r.result as ReasoningQuery["result"],
+    history: (r.history ?? []) as ReasoningQuery["history"],
+    aiModel: r.ai_model ?? "mock",
+    source: r.source ?? "mock",
+    coverage: r.coverage ?? null,
+    partial: Boolean(r.partial),
+    verified: Boolean(r.verified),
+    status: (r.status ?? "open") as ReasoningQuery["status"],
+    provisionalConclusion: r.provisional_conclusion ?? undefined,
+    judgments: (r.judgments ?? []) as ReasoningQuery["judgments"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
 }
 

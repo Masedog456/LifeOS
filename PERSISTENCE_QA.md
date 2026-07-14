@@ -58,7 +58,15 @@
    blocks changing `response`). Additive and rerunnable; it does not touch
    migrations 0001–0007, existing rows, other tables, or their RLS. There is
    **no** habit-tracker / streak / schedule table.
-9. **Project Settings → API**: copy the **Project URL** and the **anon
+9. Then run `supabase/migrations/0009_reasoning_engine.sql` (LIFEOS-014 — adds
+   the `reasonings` table: one row per saved reasoning query with jsonb
+   `scope`/`evidence`/`result`/`history`/`judgments`, own-rows RLS with full
+   CRUD so append-only history/judgments + the provisional conclusion can be
+   added to an existing row). Additive and rerunnable; it does not touch
+   migrations 0001–0008, existing rows, other tables, or their RLS. The
+   `evidence` column holds references to existing records — never copies of
+   source text.
+10. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -165,6 +173,16 @@ changes runtime behavior.
       no Constitution changes automatically; Home shows one quiet entry point
       with no streaks/points/metrics; review sessions persist after refresh.
       (23/23 automated checks, mock mode.)
+- [x] **Reasoning engine (LIFEOS-014):** a belief support audit runs (counts,
+      no truth score); a contradiction audit runs across beliefs and preserves
+      distinct tension kinds (not all flattened to "contradiction"); influence
+      tracing reaches the original source; the assumption audit finds a
+      recurring assumption; belief-impact analysis mutates nothing; findings
+      cite valid evidence and unsupported ones are dropped + flagged; a finding
+      enters the Belief Inbox; a result attaches to a Megathread; a prior
+      inquiry can be reopened; re-run keeps append-only history; the
+      Constitution never changes automatically; results persist after refresh.
+      (19/19 automated checks, mock mode.)
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
@@ -215,6 +233,9 @@ changes runtime behavior.
       review in Browser A → they appear in Browser B. A second account cannot
       read them (RLS on `reflections`/`practices`/`review_sessions`). The
       reflection `response` cannot be overwritten (DB trigger).
+- [ ] Reasoning sync: run a reasoning query (and re-run it) in Browser A → it
+      appears in Browser B with its full append-only history. A second account
+      cannot read it (RLS on `reasonings`).
 
 ## C. Real Anthropic (CREDENTIAL-DEPENDENT, pending)
 
