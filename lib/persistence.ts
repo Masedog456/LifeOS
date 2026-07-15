@@ -48,6 +48,14 @@ function normalize(partial: Partial<StoreState> | null): StoreState {
     proposals: partial?.proposals ?? [],
     beliefs: partial?.beliefs ?? [],
     sources: partial?.sources ?? [],
+    feedback: partial?.feedback ?? [],
+    comparisons: partial?.comparisons ?? [],
+    inquiries: partial?.inquiries ?? [],
+    megathreads: partial?.megathreads ?? [],
+    reflections: partial?.reflections ?? [],
+    practices: partial?.practices ?? [],
+    reviews: partial?.reviews ?? [],
+    reasonings: partial?.reasonings ?? [],
   };
 }
 

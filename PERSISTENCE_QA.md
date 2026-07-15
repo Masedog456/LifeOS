@@ -19,7 +19,54 @@
    additive/rerunnable. **No Supabase Storage bucket is needed:** PDF text
    is extracted client-side and only the text + metadata are stored; the PDF
    binary is never uploaded.
-3. **Project Settings → API**: copy the **Project URL** and the **anon
+4. Then run `supabase/migrations/0004_retrieval.sql` (LIFEOS-009 — adds the
+   append-only `retrieval_feedback` table with its own RLS: own-rows-only
+   select + insert, no update/delete). Additive and rerunnable
+   (`create table if not exists`, guarded policy creation); it does not
+   touch migrations 0001–0003, existing rows, other tables, or their RLS.
+   Retrieval itself is deterministic and in-memory — this table stores
+   **only** the user's relevance feedback, never source text or beliefs.
+5. Then run `supabase/migrations/0005_comparative_intelligence.sql`
+   (LIFEOS-010 — adds the `comparisons` table: one row per saved comparison
+   with jsonb `inputs`/`evidence`/`result`/`judgments`, own-rows RLS with
+   full CRUD so append-only judgments can be added to the jsonb array).
+   Additive and rerunnable; it does not touch migrations 0001–0004, existing
+   rows, other tables, or their RLS. Comparison itself sends only a small,
+   capped evidence packet to the AI route — never whole sources.
+6. Then run `supabase/migrations/0006_dialectical_intelligence.sql`
+   (LIFEOS-011 — adds the `inquiries` table: one row per saved dialectical
+   inquiry with jsonb `inputs`/`evidence`/`result`/`history`/`judgments`,
+   own-rows RLS with full CRUD so append-only history/judgments and the user's
+   provisional conclusion can be added to an existing row). Additive and
+   rerunnable; it does not touch migrations 0001–0005, existing rows, other
+   tables, or their RLS. Inquiry sends only a small, capped evidence packet to
+   the AI route — never whole sources.
+7. Then run `supabase/migrations/0007_megathreads.sql` (LIFEOS-012 — adds the
+   `megathreads` table: one row per thread with jsonb `members`/`pinned`/
+   `excluded`/`synthesis`/`unresolved_questions`/`judgments`/`revisions`,
+   own-rows RLS with full CRUD so curation + append-only judgments/revisions
+   can be added to an existing row). Additive and rerunnable; it does not
+   touch migrations 0001–0006, existing rows, other tables, or their RLS.
+   Threads store only references to existing records — never copies of source
+   text — and the timeline is a read-model derived at render time.
+8. Then run `supabase/migrations/0008_formation_engine.sql` (LIFEOS-013 —
+   adds `reflections` (immutable `response` enforced by a trigger + separate
+   append-only `annotations`), `practices` (status machine + append-only
+   `history`), and `review_sessions` (daily/weekly, jsonb surfaced items /
+   judgments / optional synthesis). Own-rows RLS; reflections allow
+   select/insert/update (update only for adding annotations — the trigger
+   blocks changing `response`). Additive and rerunnable; it does not touch
+   migrations 0001–0007, existing rows, other tables, or their RLS. There is
+   **no** habit-tracker / streak / schedule table.
+9. Then run `supabase/migrations/0009_reasoning_engine.sql` (LIFEOS-014 — adds
+   the `reasonings` table: one row per saved reasoning query with jsonb
+   `scope`/`evidence`/`result`/`history`/`judgments`, own-rows RLS with full
+   CRUD so append-only history/judgments + the provisional conclusion can be
+   added to an existing row). Additive and rerunnable; it does not touch
+   migrations 0001–0008, existing rows, other tables, or their RLS. The
+   `evidence` column holds references to existing records — never copies of
+   source text.
+10. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -91,6 +138,51 @@ changes runtime behavior.
 - [x] Refresh the browser → all data remains (localStorage).
 - [x] `/api/ai` invalid task → HTTP 400; invalid JSON → HTTP 400.
 - [x] `/api/ai` with no key → deterministic mock (`"source":"mock"`).
+- [x] **Comparison (LIFEOS-010):** compare 2 sources → structured result;
+      agreements/disagreements cite exact evidence chips; shared concepts
+      shown; partial-coverage sources labeled; an insight → Belief Inbox
+      (proposal + capture created, Constitution unchanged); unsupported AI
+      claims (bad evidence ids) dropped from conclusions + flagged; saved
+      comparison persists after refresh; 5-source select cap + 6th disabled;
+      belief-vs-sources runs. (15/15 automated checks, mock mode.)
+- [x] **Inquiry (LIFEOS-011):** investigate a question with 2 sources →
+      structured dialectic; affirmative/negative cases + counterarguments cite
+      exact evidence chips; terminology disputes preserved; challenge a belief
+      (relation-to-beliefs shown); accept an insight → Belief Inbox (proposal +
+      capture, Constitution unchanged); save a provisional conclusion + status;
+      unsupported AI assertions dropped from conclusions + flagged; evolve with
+      an added source → prior result kept in append-only history + conclusion
+      preserved; 5-source cap + verification confirm; persistence after refresh.
+      (22/22 automated checks, mock mode.)
+- [x] **Megathreads (LIFEOS-012):** seed a thread from a belief / comparison /
+      inquiry (auto-members include the seed + its direct inputs); candidate
+      membership is deterministic + explainable; include/exclude items;
+      timeline is chronological with page/source provenance and shows belief
+      evolution; comparisons/inquiries appear in context; generate a synthesis
+      that cites valid evidence chips; unsupported synthesis points dropped +
+      flagged; accept an insight → Belief Inbox (Constitution unchanged);
+      thread + synthesis persist after refresh. (21/21 automated checks, mock
+      mode.)
+- [x] **Formation engine (LIFEOS-013):** daily review shows ≤3 items, each with
+      an explicit reason; reflection saves without changing beliefs (response
+      immutable); a "revise" enters the existing revision flow (append-only);
+      practice candidates cite their derivation and require explicit
+      acceptance (no auto-accept); dismissed/snoozed items don't immediately
+      return; weekly counts reflect real activity and the optional synthesis
+      cites valid record ids; alignment wording stays cautious + non-accusatory;
+      no Constitution changes automatically; Home shows one quiet entry point
+      with no streaks/points/metrics; review sessions persist after refresh.
+      (23/23 automated checks, mock mode.)
+- [x] **Reasoning engine (LIFEOS-014):** a belief support audit runs (counts,
+      no truth score); a contradiction audit runs across beliefs and preserves
+      distinct tension kinds (not all flattened to "contradiction"); influence
+      tracing reaches the original source; the assumption audit finds a
+      recurring assumption; belief-impact analysis mutates nothing; findings
+      cite valid evidence and unsupported ones are dropped + flagged; a finding
+      enters the Belief Inbox; a result attaches to a Megathread; a prior
+      inquiry can be reopened; re-run keeps append-only history; the
+      Constitution never changes automatically; results persist after refresh.
+      (19/19 automated checks, mock mode.)
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
@@ -128,6 +220,22 @@ changes runtime behavior.
 - [ ] No wrong-user migration: if a different email signs in on a browser
       that already held another account's data, that data is **not** pushed
       into the new account (it stays in its owner's account).
+- [ ] Saved comparisons sync: create a comparison in Browser A → it appears
+      in Browser B (same email). A second account cannot read it (RLS on
+      `comparisons`).
+- [ ] Saved inquiries sync: create an inquiry (and evolve it) in Browser A →
+      it appears in Browser B with its full append-only history. A second
+      account cannot read it (RLS on `inquiries`).
+- [ ] Megathreads sync: create a thread (with members + a synthesis) in
+      Browser A → it appears in Browser B with its members and synthesis. A
+      second account cannot read it (RLS on `megathreads`).
+- [ ] Formation sync: write a reflection, accept a practice, and run a weekly
+      review in Browser A → they appear in Browser B. A second account cannot
+      read them (RLS on `reflections`/`practices`/`review_sessions`). The
+      reflection `response` cannot be overwritten (DB trigger).
+- [ ] Reasoning sync: run a reasoning query (and re-run it) in Browser A → it
+      appears in Browser B with its full append-only history. A second account
+      cannot read it (RLS on `reasonings`).
 
 ## C. Real Anthropic (CREDENTIAL-DEPENDENT, pending)
 

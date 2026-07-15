@@ -85,6 +85,273 @@ Notes on this shape, for future implementation:
   application-level discipline — enforcing `PRINCIPLES.md` §6 at the data
   layer, not just in the UI.
 
+## Retrieval layer (LIFEOS-009 — implemented, deterministic)
+
+Intelligent Library retrieval is **implemented and deterministic** — no
+embeddings, no `pgvector`, no AI route, no background jobs. It runs
+entirely in the browser over the in-memory store.
+
+- **Records as a view, not a copy** (`lib/retrieval/records.ts`).
+  `buildRecords(state)` projects the existing store into normalized
+  `RetrievalRecord`s (one per source / summary / concept / quote / chunk /
+  candidate belief / capture / unresolved proposal / belief / earlier
+  revision). Records are rebuilt transiently on demand and are **never
+  persisted** — they duplicate no large source text on disk. Every record
+  keeps provenance (`sourceId`, `page`, `href`) so results are explainable.
+- **Explainable ranking** (`lib/retrieval/search.ts`). `search()` scores
+  each record with weighted, inspectable signals: exact phrase (×6),
+  concept overlap (×4), token overlap (×3), title/author match (×2), page
+  provenance, belief-status boost, and recency (×0.5) — exact and concept
+  matches are deliberately weighted above recency. Each result carries a
+  human "why it matched" `Reason`; **raw scores are never shown in the
+  UI**. Results are deduped by normalized text and diversified with a
+  per-source cap. `relatedTo(text, …)` is the same engine tuned for
+  contextual "what else relates to this" (limit 5, one per source).
+- **Feedback tunes ranking only** (`retrieval_feedback`, migration 0004).
+  `relevant` boosts, `not_relevant`/`dismissed` suppress, `snoozed` hides
+  until `snooze_until`. This is a deterministic re-rank/filter — **not** an
+  ML recommender, and it never changes a belief or its status.
+- **Where it surfaces.** Library search (grouped by type, with provenance
+  and why-matched), Home capture resurfacing (async, after save, ≤1
+  primary + up to 2 more, never blocking the save), Constitution
+  per-belief related evidence (collapsed, never auto-resolving
+  contradictions), and Reader "find related from your library" (collapsed,
+  excludes the current source).
+
+The section below describes a *possible future* semantic layer. It is
+**not** a description of today's retrieval, which is the deterministic
+engine above. A future migration to embeddings would sit behind the same
+`search`/`relatedTo` seams.
+
+## Comparative intelligence (LIFEOS-010 — implemented)
+
+Cross-source comparison is **implemented** on top of the deterministic
+retrieval layer. It compares 2–5 sources (or a belief + sources) while
+preserving genuine differences and exact provenance. No graph UI, no
+megathreads, no background agents, and it never changes beliefs or the
+Constitution automatically.
+
+- **Deterministic evidence packet** (`lib/comparison/evidence.ts`).
+  `buildEvidence(state, inputs, question)` assembles a small, provenance-
+  bearing packet from data already in the store: per source — metadata,
+  summary, ≤3 representative chunk summaries, ≤4 exact quotes (page/offset),
+  ≤6 concepts, ≤3 candidate claims; per belief — its text; per passage — the
+  exact quote. The LIFEOS-009 retrieval engine (`search`) ranks which
+  quotes/chunks are most relevant to the comparison question. Per-source
+  caps plus a total `MAX_PACKET_CHARS` budget keep whole books from being
+  sent. Every item gets a stable id (`E1…En`) and records AI/mock origin +
+  coverage.
+- **One structured AI call, then verification** (`lib/comparison/run.ts`).
+  The packet → a single `compare` call on the existing `/api/ai` route →
+  strict validation (`lib/comparison/schema.ts`) that **drops any point
+  whose `evidenceIds` are not in the packet** (unsupported prose never
+  becomes a conclusion; it is flagged). For larger comparisons (≥4 sources)
+  an optional second `compare_verify` pass reviews the draft. The mock
+  (`lib/mockCompare.ts`) produces a real, evidence-cited result offline, so
+  the whole flow works with no API key.
+- **Terminology & contradiction care** (Phases 7–8). The prompt and
+  validator require cautious language ("resembles", "may parallel", "differs
+  because") and flag flattening phrasing ("identical", "interchangeable").
+  Each disagreement is classified (logical / practical / definitional /
+  level-of-analysis / historical / ambiguity) — not every difference is a
+  contradiction.
+- **Human judgment** (`components/ComparisonResult.tsx`). Every insight is a
+  proposal: Accept → the existing Belief Inbox, Rewrite → Inbox, Question,
+  Reject, or just save the comparison. Judgments are append-only on the
+  `Comparison`; the Constitution is never touched automatically.
+- **Persistence.** A comparison is one row (`comparisons`, migration
+  `0005_comparative_intelligence.sql`) with jsonb `inputs`/`evidence`/
+  `result`/`judgments`, own-rows RLS. Local fallback stores it in the same
+  state blob. Entry points: Nav, Library, Reader ("compare with another
+  source"), Constitution ("compare this belief with sources").
+
+## Dialectical intelligence (LIFEOS-011 — implemented)
+
+Structured reasoning is **implemented** on top of the retrieval (LIFEOS-009)
+and comparison (LIFEOS-010) layers. An **inquiry** investigates one question
+through evidence, arguments, objections, and unresolved tensions — it never
+decides what the user must believe, and never changes the Constitution.
+
+- **Evidence packet** (`lib/dialectic/evidence.ts`). `buildInquiryEvidence`
+  reuses the comparison evidence builder for source/belief/passage inputs,
+  then appends dialectic-specific evidence — belief **revisions**, prior
+  **comparison findings**, and **terminology** disputes — continuing the same
+  `E1…En` id sequence. Same per-source + total caps; whole books are never
+  sent.
+- **One structured call, then verification** (`lib/dialectic/run.ts`). Packet
+  → a single `dialectic` call on `/api/ai` → strict validation
+  (`lib/dialectic/schema.ts`) that **drops any substantive assertion whose
+  `evidenceIds` are not in the packet** (flagged, never shown as grounded) →
+  optional `dialectic_verify` second pass for ≥4 sources. The mock
+  (`lib/mockDialectic.ts`) is deliberately honest: it derives an affirmative
+  case from question/word overlap and states plainly that it cannot detect a
+  genuine counter-position, rather than fabricating fake symmetric balance.
+- **Argument quality** (Phase 5). Points carry an `argType` (premise /
+  conclusion / objection / rebuttal / qualification / analogy / definition /
+  empirical / interpretive / theological / personal_judgment); the schema
+  names reasoning defects (invalid inference, hidden assumption, equivocation,
+  circular reasoning, unsupported generalization) only when present, flags
+  false-certainty language ("proves", "definitively") over interpretive
+  evidence, and never treats all disagreement as logical contradiction.
+- **Strict result** (`DialecticResultData`): question, definitions,
+  assumptions, strongest affirmative/negative cases, supporting evidence,
+  counterarguments, rebuttals, terminology disputes, distinctions, unresolved
+  ambiguities, possible syntheses, what-would-change-the-conclusion, questions
+  for the human, relation-to-beliefs, reasoning issues, limitations/coverage.
+- **Human judgment + evolution** (`components/DialecticResult.tsx`,
+  `app/inquiry/[id]`). Each insight is a proposal: Accept/Rewrite → the
+  existing Belief Inbox, Question, Reject, or save without adopting. The user
+  writes their own provisional conclusion and sets status
+  (open/provisional/unresolved/resolved). Re-running with added sources pushes
+  the prior result into **append-only `history`** — reasoning is never
+  overwritten.
+- **Persistence.** One row (`inquiries`, migration
+  `0006_dialectical_intelligence.sql`) with jsonb `inputs`/`evidence`/
+  `result`/`history`/`judgments`, own-rows RLS. Entry points: Nav, Compare
+  ("investigate this question"), Constitution ("challenge this belief"),
+  Reader ("investigate this passage").
+
+## Megathreads & longitudinal knowledge (LIFEOS-012 — implemented)
+
+Megathreads are **implemented** as living, provenance-grounded VIEWS over
+existing records — not folders and not copies. A thread shows how a topic,
+question, or belief develops across sources, captures, comparisons,
+inquiries, judgments, and revisions over time. No graph UI, no autonomous
+agents, and it never changes the Constitution.
+
+- **Record** (`Megathread`). Stores a seed (type + id + label), human
+  title/description/status, **member references** (pointers to existing
+  records — no source text is duplicated), curation state (`pinned`,
+  `excluded`), a cautious synthesis + its evidence packet, unresolved
+  questions, notes, append-only `judgments` and a `revisions` change log.
+- **Membership** (`lib/megathread/membership.ts`). Deterministic and
+  EXPLAINABLE: `initialMembers` seeds a thread from a belief/comparison/
+  inquiry/source and its direct inputs; `candidateMembers` scans records for
+  retrieval relatedness (LIFEOS-009 `search`) plus structural links (shared
+  source/belief ids in comparisons/inquiries), each with a human-readable
+  reason. AI never silently adds members; beliefs are only ever added by
+  explicit user action.
+- **Timeline** (`lib/megathread/timeline.ts`). A chronological READ-MODEL
+  built at render time from existing records — never stored, so it never
+  rewrites history. Each event keeps provenance (type, date, source, page,
+  human/AI origin, relationship to the thread). Excluded members are skipped.
+- **Synthesis** (`lib/megathread/run.ts`, `synthesis.ts`). Capped evidence
+  packet (reuses the inquiry evidence builder + appends inquiry findings) →
+  ONE `thread_synthesis` call on `/api/ai` → strict validation dropping any
+  point whose evidence ids aren't in the packet (flagged, never grounded).
+  Belief-evolution and recent-changes are computed deterministically from the
+  timeline and injected, so they are always accurate. The mock
+  (`lib/mockThreadSynthesis.ts`) produces an evidence-cited synthesis offline.
+  Regeneration is explicit; nothing runs in the background.
+- **Curation + judgment** (`app/threads/[id]`,
+  `components/Thread{Timeline,Synthesis}.tsx`). Add/remove/pin/exclude
+  members, edit title/description/notes, rewrite the current understanding,
+  add/resolve questions, archive. Each synthesis insight → Accept into the
+  Belief Inbox / Question / Reject. The Constitution is never touched
+  automatically.
+- **Persistence.** One row (`megathreads`, migration `0007_megathreads.sql`)
+  with jsonb `members`/`pinned`/`excluded`/`synthesis`/`revisions`, own-rows
+  RLS. Entry points: Nav, Constitution ("create Megathread"), Reader ("add to
+  Megathread"), Compare/Inquiry ("create thread").
+
+## Formation engine — daily & weekly review (LIFEOS-013 — implemented)
+
+The Formation Engine is **implemented**: a calm daily/weekly review that
+helps the user reconnect with past knowledge and decide what should change.
+It surfaces and asks; the human interprets and decides. No embeddings, no
+graph UI, no background agents, and **no notifications, streaks, points,
+badges, or gamification of any kind**. Nothing high-stakes changes
+automatically.
+
+- **Records** (`types/mvp.ts`). `Reflection` (immutable `response` + a
+  SEPARATE append-only `annotations` list), `PracticeCandidate` (a
+  status machine — proposed/accepted/paused/completed/rejected — with
+  `derivedFrom` provenance and append-only `history`), and `ReviewSession`
+  (daily/weekly, with surfaced items, judgments, reflection ids, accepted
+  practices, and an optional narrative synthesis).
+- **Daily selection** (`lib/formation/daily.ts`). `buildDailyReview` returns
+  **at most three** items, each with an explicit reason, from a fixed-priority
+  pool (a questioned belief / an unresolved question / a recent thread change /
+  a belief not revisited in a while / a past thought or quote). It is fully
+  deterministic and filters items the user dismissed/snoozed/postponed — via
+  the existing LIFEOS-009 feedback store — or already reviewed today. No
+  infinite feed.
+- **Reflection flow** (`app/review`). Per item: affirm / revise / question /
+  dismiss / postpone / reflect. Saving a reflection NEVER changes a belief; a
+  "revise" routes through the existing append-only `reviseBelief` revision
+  flow.
+- **Practices** (`lib/formation/practice.ts` + `practice_suggest`). AI
+  proposes small, modest practices that must cite their derivation; a
+  guardrail rejects medical/legal/financial/dangerous directives and
+  moralizing language. Suggestions are provisional — the user must accept or
+  rewrite. No scheduling, no streaks.
+- **Weekly + alignment** (`lib/formation/weekly.ts`, `alignment.ts`).
+  Deterministic counts and week-over-week deltas first; **one optional**
+  `weekly_synthesis` narrative whose highlights must cite real record ids
+  (validated). The alignment reflection (`alignment_reflection`) is grounded
+  ONLY in accepted beliefs, the user's reflections, and accepted practices,
+  uses cautious wording ("You reported…", "would you like to examine this?"),
+  never accuses or diagnoses, and never infers behavior from missing data.
+- **AI + cost** (Phase 9). Deterministic selection → capped provenance packet
+  (evidence ids ARE real record ids) → **at most one** AI call per
+  user-triggered action → deterministic validation → mock fallback. No
+  automatic background calls; the approximate call count is shown before any
+  optional synthesis.
+- **Home + persistence.** Home stays quiet — one "Begin today's review" link,
+  no dashboard/metrics. Records persist to `reflections`/`practices`/
+  `review_sessions` (migration `0008_formation_engine.sql`; the reflection
+  response is immutable via a DB trigger; own-rows RLS).
+
+## Reasoning engine (LIFEOS-014 — implemented)
+
+Higher-order reasoning across the whole knowledge system is **implemented**,
+deterministic-first. It answers questions like "which beliefs are weakly
+supported?", "what contradictions exist?", "what shaped this view?". No
+autonomous agents, no graph UI, and it never changes the Constitution.
+
+- **Record** (`ReasoningQuery`): question, one of eight modes, optional scope
+  (entire library / selected sources / beliefs / threads / comparisons /
+  inquiries), the evidence packet (references, not text copies), the strict
+  structured result, human judgments, provisional conclusion, status, and an
+  append-only `history` of prior runs.
+- **Modes**: support audit · contradiction audit · influence trace ·
+  assumption audit · belief-impact analysis · unresolved-question synthesis ·
+  change-over-time analysis · open inquiry. One workspace, not a page per mode.
+- **Evidence graph** (`lib/reasoning/graph.ts`). `resolveScope` resolves a
+  scope to concrete id sets and expands conservatively from a selection;
+  `buildReasoningGraph` builds an INTERNAL node/edge structure (source, quote,
+  belief, revision, comparison, inquiry, thread, reflection, practice …; edges
+  derived_from / revised_from / references / compared_with / investigated_by /
+  belongs_to …) plus a capped evidence packet whose ids ARE real record ids.
+  Never rendered as a graph, never duplicates source text.
+- **Deterministic passes** (`lib/reasoning/passes.ts`) run BEFORE any AI and
+  produce the grounded result: support audit (counts, **no truth score**),
+  contradiction audit (comparison disagreements, inquiry both-sided readings,
+  opposing-polarity belief pairs, revision reversals — each classified
+  cautiously so a definitional difference is not a logical contradiction),
+  influence trace (source→capture→belief→revision, comparison/inquiry→belief),
+  assumption audit (recurrence-deduped), belief-impact (may-support /
+  may-challenge / affected threads / reopened inquiries — mutates nothing),
+  change-over-time, and unresolved synthesis.
+- **AI layer** (`reasoning_synthesis` + optional `reasoning_verify`). One call
+  adds a narrative key-findings layer over the deterministic result; validation
+  (`lib/reasoning/schema.ts`) drops any finding whose evidence ids aren't in
+  the packet (flagged) and flags overconfident wording. A verification pass runs
+  only for large graphs (≥30 nodes). Mock fallback echoes the deterministic seed.
+- **Cost controls** (Phase 6). Max scope sources, max evidence packet size,
+  approximate call count + record/evidence counts shown, partial-coverage
+  warning, explicit confirmation for expensive (≥2-call) runs, no background
+  reasoning.
+- **Human judgment + history** (`app/reason/[id]`,
+  `components/ReasoningResult.tsx`). Accept a finding → Belief Inbox, rewrite,
+  question, reject; mark a candidate contradiction resolved/unresolved; write a
+  provisional conclusion; reopen a referenced inquiry; attach the result to a
+  Megathread (adds a note); re-run (pushes the prior result into append-only
+  history). Persisted as `reasonings` (migration `0009_reasoning_engine.sql`,
+  own-rows RLS). Entry points: Constitution belief ("audit support") + header
+  ("find tensions"), Reader source ("trace influence"), Megathread ("reason
+  across this thread"), Nav.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

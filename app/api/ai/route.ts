@@ -27,6 +27,11 @@ import {
   mockSummary,
   type ChunkMap,
 } from "@/lib/mockAI";
+import { mockCompare } from "@/lib/mockCompare";
+import { mockDialectic } from "@/lib/mockDialectic";
+import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
+import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFormation";
+import { mockReasoning } from "@/lib/mockReasoning";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -38,7 +43,17 @@ type Task =
   | "concepts"
   | "question"
   | "map"
-  | "reduce_summary";
+  | "reduce_summary"
+  | "compare"
+  | "compare_verify"
+  | "dialectic"
+  | "dialectic_verify"
+  | "thread_synthesis"
+  | "practice_suggest"
+  | "weekly_synthesis"
+  | "alignment_reflection"
+  | "reasoning_synthesis"
+  | "reasoning_verify";
 
 const ALLOWED_TASKS = new Set<Task>([
   "beliefs",
@@ -48,12 +63,32 @@ const ALLOWED_TASKS = new Set<Task>([
   "question",
   "map",
   "reduce_summary",
+  "compare",
+  "compare_verify",
+  "dialectic",
+  "dialectic_verify",
+  "thread_synthesis",
+  "practice_suggest",
+  "weekly_synthesis",
+  "alignment_reflection",
+  "reasoning_synthesis",
+  "reasoning_verify",
 ]);
 
 const MAX_INPUT_CHARS = 50_000;
 const MAX_MODEL_CHARS = 12_000;
 const MAX_SUMMARIES = 60;
+const MAX_EVIDENCE = 60;
 const REQUEST_TIMEOUT_MS = 25_000;
+
+/** A lightweight evidence item as received by the compare task. */
+interface CompareEvidence {
+  id: string;
+  group: string;
+  kind: string;
+  text: string;
+  page?: number;
+}
 
 interface AnthropicTextBlock {
   type: string;
@@ -68,6 +103,13 @@ interface AiInput {
   text: string;
   question: string;
   summaries: string[];
+  // ---- comparison (LIFEOS-010) ----
+  evidence: CompareEvidence[];
+  title: string;
+  sourcesCompared: string[];
+  coverageNote: string;
+  /** The draft comparison result to review (compare_verify only). */
+  draft: string;
 }
 
 function rawText(data: AnthropicResponse): string {
@@ -145,9 +187,242 @@ function parseMap(raw: string, text: string): ChunkMap {
   };
 }
 
+function evidenceBlock(evidence: CompareEvidence[]): string {
+  return evidence
+    .map((e) => {
+      const prov = [e.group, e.kind, e.page != null ? `p.${e.page}` : ""].filter(Boolean).join("; ");
+      return `[${e.id}] (${prov}) "${e.text.replace(/\s+/g, " ").slice(0, 600)}"`;
+    })
+    .join("\n");
+}
+
+function comparePrompt(input: AiInput): string {
+  return [
+    "You are comparing 2–5 intellectual materials for a single reader.",
+    "Use ONLY the evidence items below, and cite them by id (e.g. E1, E4).",
+    "",
+    "RULES:",
+    "- Every agreement, disagreement, assumption, unresolved tension,",
+    "  relation-to-belief, and strongest-evidence entry MUST cite one or more",
+    "  evidence ids that appear below. NEVER cite an id that is not listed, and",
+    "  never state a conclusion you cannot ground in the evidence.",
+    "- Do NOT invent quotes, claims, or facts absent from the evidence.",
+    "- Preserve genuine differences. Do NOT declare distinct traditions",
+    "  identical or interchangeable. Use cautious language: \"resembles\",",
+    "  \"may parallel\", \"differs because\", \"under this interpretation\".",
+    "- Classify each disagreement's \"kind\" as exactly one of: logical,",
+    "  practical, definitional, level_of_analysis, historical, ambiguity.",
+    "  Not every difference is a contradiction.",
+    "",
+    "Return ONLY a JSON object with keys: title (string), question (string),",
+    "sourcesCompared (string[]), sharedConcepts (string[]),",
+    "agreements ({statement, evidenceIds[]}[]),",
+    "disagreements ({statement, kind, evidenceIds[]}[]),",
+    "terminologyDifferences ({term, note, evidenceIds[]}[]),",
+    "assumptions ({statement, evidenceIds[]}[]),",
+    "strongestEvidence ({position, evidenceIds[]}[]),",
+    "unresolvedTensions ({statement, evidenceIds[]}[]),",
+    "questionsForUser (string[]),",
+    "relationToBeliefs ({statement, evidenceIds[]}[]),",
+    "limitations (string[]), coverageNote (string).",
+    "",
+    `Question: ${input.question || "Where do these sources agree, disagree, and use terms differently?"}`,
+    `Coverage note: ${input.coverageNote}`,
+    "",
+    "Evidence:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
+function verifyPrompt(input: AiInput): string {
+  return [
+    "Review this DRAFT comparison for problems. Return ONLY a JSON object:",
+    '  { "cautions": string[], "removeStatements": string[] }',
+    "- cautions: brief warnings about false equivalence, overreach, flattened",
+    "  distinctions, or conclusions stronger than the evidence supports.",
+    "- removeStatements: EXACT statement strings from the draft that are not",
+    "  supported by the listed evidence and should be removed.",
+    "Valid evidence ids: " + input.evidence.map((e) => e.id).join(", "),
+    "",
+    "Evidence:",
+    evidenceBlock(input.evidence),
+    "",
+    "Draft comparison JSON:",
+    input.draft.slice(0, MAX_MODEL_CHARS),
+  ].join("\n");
+}
+
+function dialecticPrompt(input: AiInput): string {
+  return [
+    "You are helping a reader reason dialectically about ONE question. You do",
+    "NOT decide what they must believe — you lay out the strongest cases,",
+    "objections, and unresolved tensions, grounded in the evidence.",
+    "Use ONLY the evidence items below, and cite them by id (e.g. E1, E4).",
+    "",
+    "RULES:",
+    "- Every SUBSTANTIVE assertion (assumptions, affirmative/negative points,",
+    "  supporting evidence, counterarguments, rebuttals, relation-to-beliefs)",
+    "  MUST cite one or more evidence ids that appear below. Never cite an id",
+    "  that is not listed. Never assert a conclusion you cannot ground.",
+    "- Do NOT invent quotes, claims, or objections absent from the evidence.",
+    "  A hallucinated objection is worse than a missing one.",
+    "- Do NOT manufacture false balance: if one side is weakly supported by the",
+    "  evidence, say so rather than inventing a symmetric counter-case.",
+    "- Tag each point's argType where useful: premise, conclusion, objection,",
+    "  rebuttal, qualification, analogy, definition, empirical, interpretive,",
+    "  theological, personal_judgment.",
+    "- In reasoningIssues, note only genuinely present defects (invalid_inference,",
+    "  hidden_assumption, equivocation, circular_reasoning, unsupported_generalization).",
+    "- Use cautious language. NEVER claim formal certainty ('proves',",
+    "  'definitively') over interpretive or theological evidence.",
+    "",
+    "Return ONLY a JSON object with keys: question (string),",
+    "definitions ({term, definition}[]), assumptions ({statement, evidenceIds[], argType?}[]),",
+    "affirmativeCase (point[]), negativeCase (point[]),",
+    "supportingEvidence ({position, evidenceIds[]}[]),",
+    "counterarguments (point[]), rebuttals (point[]),",
+    "terminologyDisputes ({term, note, evidenceIds[]}[]),",
+    "distinctions (string[]), unresolvedAmbiguities (string[]),",
+    "possibleSyntheses ({statement, evidenceIds[]}[]),",
+    "evidenceThatWouldChange (string[]), questionsForHuman (string[]),",
+    "relationToBeliefs (point[]), reasoningIssues ({kind, note, evidenceIds[]}[]),",
+    "limitations (string[]), coverageNote (string).",
+    "(point = {statement, evidenceIds[], argType?})",
+    "",
+    `Question: ${input.question}`,
+    `Coverage note: ${input.coverageNote}`,
+    "",
+    "Evidence:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
+function threadSynthesisPrompt(input: AiInput): string {
+  return [
+    "You are writing a cautious SYNTHESIS of a longitudinal knowledge thread",
+    `titled "${input.title}". Summarize how the user's understanding has`,
+    "developed across the materials — you do NOT tell them what to believe.",
+    "Use ONLY the evidence items below, and cite them by id (e.g. E1, E4).",
+    "",
+    "RULES:",
+    "- Every position, agreement, disagreement, and strongest-support/challenge",
+    "  entry MUST cite evidence ids that appear below. Never cite an id not listed.",
+    "- Do NOT invent evidence, positions, or quotations.",
+    "- Preserve genuine differences; do NOT declare distinct sources identical.",
+    "- Be cautious and provisional. This is a living view, not a verdict.",
+    "",
+    "Return ONLY a JSON object with keys: currentUnderstanding (string),",
+    "majorPositions ({statement, evidenceIds[]}[]),",
+    "agreements ({statement, evidenceIds[]}[]),",
+    "disagreements ({statement, evidenceIds[]}[]),",
+    "terminologyDifferences ({term, note, evidenceIds[]}[]),",
+    "strongestSupport ({position, evidenceIds[]}[]),",
+    "strongestChallenge ({position, evidenceIds[]}[]),",
+    "unresolvedQuestions (string[]), limitations (string[]), coverageNote (string).",
+    "",
+    `Coverage note: ${input.coverageNote}`,
+    "",
+    "Evidence:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
+function practiceSuggestPrompt(input: AiInput): string {
+  return [
+    "Propose 1–3 SMALL, modest, concrete practices that follow from the",
+    "material below. Each must be reviewable in a sentence and safe.",
+    "",
+    "HARD RULES:",
+    "- NO medical, legal, financial, or dangerous behavioral directives.",
+    "- NO moralizing or shaming language ('you must', 'you should', 'sinful').",
+    "- No scheduling, no streaks. A cadence is a gentle suggestion only.",
+    "- Ground each practice in the material; state the derivation in rationale.",
+    "",
+    "Return ONLY JSON: { \"practices\": [ { \"title\": string, \"description\":",
+    "string, \"rationale\": string, \"cadence\": \"once\"|\"daily\"|\"weekly\"|\"occasional\" } ] }",
+    "",
+    "Material:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
+function weeklySynthesisPrompt(input: AiInput): string {
+  return [
+    "Write a SHORT, factual weekly-review narrative of the user's activity.",
+    "Use ONLY the records below; cite them by id in recordIds. Never invent",
+    "activity. Be plain and non-judgmental — no praise, no scolding.",
+    "",
+    "Return ONLY JSON: { \"narrative\": string, \"highlights\": [ { \"statement\":",
+    "string, \"recordIds\": string[] } ], \"limitations\": string[] }",
+    "",
+    `Deterministic counts: ${input.question}`,
+    "",
+    "Records:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
+function alignmentReflectionPrompt(input: AiInput): string {
+  return [
+    "Gently reflect on alignment between what the user says they believe and",
+    "what they have REPORTED living. Use ONLY the records below; cite ids in",
+    "recordIds.",
+    "",
+    "HARD RULES (Phase 7):",
+    "- Never accuse, diagnose, or moralize. No 'you failed', 'hypocrite',",
+    "  'you should'. Use cautious wording: 'You reported…', 'This may be in",
+    "  tension with…', 'Would you like to examine this?'.",
+    "- Do NOT infer private behavior from missing data. Absence of a record is",
+    "  NOT evidence about their life.",
+    "",
+    "Return ONLY JSON: { \"observations\": [ { \"statement\": string, \"recordIds\":",
+    "string[] } ], \"questions\": string[], \"limitations\": string[] }",
+    "",
+    "Records:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
+function reasoningPrompt(input: AiInput): string {
+  return [
+    `You are reasoning across a user's knowledge system (mode: ${input.title}).`,
+    "Deterministic analysis has already produced the grounded findings; your job",
+    "is to add a SHORT higher-level narrative layer. Use ONLY the records below;",
+    "cite them by id in evidenceIds. Never invent evidence or causal influence.",
+    "Be cautious — do not overclaim certainty.",
+    "",
+    "Return ONLY JSON: { \"keyFindings\": [ { \"statement\": string, \"evidenceIds\":",
+    "string[] } ], \"alternativeInterpretations\": string[], \"questionsForHuman\":",
+    "string[], \"limitations\": string[] }",
+    "",
+    `Question: ${input.question}`,
+    "",
+    "Records:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
 function promptFor(input: AiInput): string {
   const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (input.task) {
+    case "compare":
+      return comparePrompt(input);
+    case "compare_verify":
+    case "dialectic_verify":
+    case "reasoning_verify":
+      return verifyPrompt(input);
+    case "reasoning_synthesis":
+      return reasoningPrompt(input);
+    case "dialectic":
+      return dialecticPrompt(input);
+    case "thread_synthesis":
+      return threadSynthesisPrompt(input);
+    case "practice_suggest":
+      return practiceSuggestPrompt(input);
+    case "weekly_synthesis":
+      return weeklySynthesisPrompt(input);
+    case "alignment_reflection":
+      return alignmentReflectionPrompt(input);
     case "summary":
       return `Summarize the following in 2–4 sentences, plainly, no preamble.\n\n${src}`;
     case "quotes":
@@ -201,6 +476,39 @@ function mockFor(input: AiInput): unknown {
       return mockMapChunk(input.text);
     case "reduce_summary":
       return mockReduceSummary(input.summaries);
+    case "compare":
+      return mockCompare({
+        evidence: input.evidence,
+        question: input.question,
+        title: input.title || "Comparison",
+        sourcesCompared: input.sourcesCompared,
+        coverageNote: input.coverageNote,
+      });
+    case "compare_verify":
+    case "dialectic_verify":
+      return { cautions: [], removeStatements: [] };
+    case "dialectic":
+      return mockDialectic({
+        evidence: input.evidence,
+        question: input.question,
+        coverageNote: input.coverageNote,
+      });
+    case "thread_synthesis":
+      return mockThreadSynthesis({
+        evidence: input.evidence,
+        title: input.title || "Thread",
+        coverageNote: input.coverageNote,
+      });
+    case "practice_suggest":
+      return mockPractices({ evidence: input.evidence });
+    case "weekly_synthesis":
+      return mockWeeklySynthesis({ evidence: input.evidence, summary: input.question });
+    case "alignment_reflection":
+      return mockAlignment({ evidence: input.evidence });
+    case "reasoning_synthesis":
+      return mockReasoning({ evidence: input.evidence, question: input.question, mode: input.title });
+    case "reasoning_verify":
+      return { cautions: [], removeStatements: [] };
     case "beliefs":
     default:
       return mockProposals(input.text);
@@ -218,6 +526,19 @@ function parseFor(input: AiInput, raw: string): unknown {
       return parseStringArray(raw);
     case "map":
       return parseMap(raw, input.text);
+    case "compare":
+    case "compare_verify":
+    case "dialectic":
+    case "dialectic_verify":
+    case "thread_synthesis":
+    case "practice_suggest":
+    case "weekly_synthesis":
+    case "alignment_reflection":
+    case "reasoning_synthesis":
+    case "reasoning_verify":
+      // Return the raw parsed object; strict validation happens client-side
+      // (lib/comparison, lib/dialectic, lib/megathread, lib/formation, lib/reasoning).
+      return JSON.parse(jsonSlice(raw, "{"));
     case "beliefs":
     default: {
       const claims = parseClaims(raw, input.text);
@@ -225,6 +546,13 @@ function parseFor(input: AiInput, raw: string): unknown {
       return claims;
     }
   }
+}
+
+function maxTokensFor(task: Task): number {
+  // Structured comparison/dialectic/synthesis outputs are large; more room.
+  if (task === "dialectic") return 4096;
+  if (task === "compare" || task === "thread_synthesis" || task === "reasoning_synthesis") return 3072;
+  return 1024;
 }
 
 async function callAnthropic(key: string, input: AiInput): Promise<unknown> {
@@ -241,7 +569,7 @@ async function callAnthropic(key: string, input: AiInput): Promise<unknown> {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1024,
+        max_tokens: maxTokensFor(input.task),
         messages: [{ role: "user", content: promptFor(input) }],
       }),
       signal: controller.signal,
@@ -262,6 +590,11 @@ export async function POST(request: Request) {
       text?: unknown;
       question?: unknown;
       summaries?: unknown;
+      evidence?: unknown;
+      title?: unknown;
+      sourcesCompared?: unknown;
+      coverageNote?: unknown;
+      draft?: unknown;
     };
     const t = typeof body.task === "string" ? (body.task as Task) : "beliefs";
     if (!ALLOWED_TASKS.has(t)) {
@@ -277,12 +610,43 @@ export async function POST(request: Request) {
             .map((s) => s.trim())
             .slice(0, MAX_SUMMARIES)
         : [],
+      evidence: Array.isArray(body.evidence)
+        ? body.evidence
+            .filter(
+              (e): e is CompareEvidence =>
+                !!e && typeof (e as CompareEvidence).id === "string" && typeof (e as CompareEvidence).text === "string",
+            )
+            .map((e) => ({
+              id: String(e.id).slice(0, 64),
+              group: String(e.group ?? "").slice(0, 200),
+              kind: String(e.kind ?? "").slice(0, 40),
+              text: String(e.text).slice(0, 2_000),
+              page: typeof e.page === "number" ? e.page : undefined,
+            }))
+            .slice(0, MAX_EVIDENCE)
+        : [],
+      title: (typeof body.title === "string" ? body.title : "").slice(0, 300).trim(),
+      sourcesCompared: Array.isArray(body.sourcesCompared)
+        ? body.sourcesCompared.filter((s): s is string => typeof s === "string").map((s) => s.trim()).slice(0, 5)
+        : [],
+      coverageNote: (typeof body.coverageNote === "string" ? body.coverageNote : "").slice(0, 500).trim(),
+      draft: (typeof body.draft === "string" ? body.draft : "").slice(0, MAX_INPUT_CHARS),
     };
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
 
-  const hasInput = input.task === "reduce_summary" ? input.summaries.length > 0 : input.text.length > 0;
+  const EVIDENCE_TASKS = new Set<Task>([
+    "compare", "compare_verify", "dialectic", "dialectic_verify", "thread_synthesis",
+    "practice_suggest", "weekly_synthesis", "alignment_reflection",
+    "reasoning_synthesis", "reasoning_verify",
+  ]);
+  const hasInput =
+    input.task === "reduce_summary"
+      ? input.summaries.length > 0
+      : EVIDENCE_TASKS.has(input.task)
+        ? input.evidence.length > 0
+        : input.text.length > 0;
   if (!hasInput) {
     return NextResponse.json({ result: mockFor(input), source: "mock" });
   }

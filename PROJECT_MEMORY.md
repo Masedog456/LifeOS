@@ -23,6 +23,226 @@ pending Product Owner approval).
 
 ## 2. Current Sprint Status
 
+- Date: 2026-07-12
+- **LIFEOS-014 — Reasoning engine: implemented.** Higher-order, deterministic-
+  first reasoning across the whole knowledge system (sources, beliefs,
+  revisions, comparisons, inquiries, Megathreads, reflections, practices). No
+  autonomous agents, no graph UI; the Constitution never changes automatically.
+  `ReasoningQuery` record: question, one of 8 modes, optional scope (all /
+  selected sources|beliefs|threads|comparisons|inquiries), evidence packet
+  (references, not text copies), strict structured result, judgments,
+  provisional conclusion, status, append-only `history`. Evidence graph
+  (`lib/reasoning/graph.ts`): `resolveScope` (conservative expansion) +
+  `buildReasoningGraph` build an INTERNAL node/edge structure + a capped
+  packet whose ids ARE real record ids (never a graph UI, never duplicating
+  text). Deterministic passes (`lib/reasoning/passes.ts`) run before any AI and
+  produce the grounded result: support audit (counts, **no truth score**),
+  contradiction audit (comparison disagreements / inquiry both-sided readings /
+  opposing-polarity belief pairs / revision reversals — cautiously classified,
+  a definitional difference ≠ a logical contradiction), influence trace
+  (source→capture→belief→revision; comparison/inquiry→belief), assumption audit
+  (recurrence-deduped), belief-impact (may-support/challenge, affected threads,
+  reopened inquiries — mutates nothing), change-over-time, unresolved synthesis.
+  AI layer (`reasoning_synthesis` + optional `reasoning_verify`): one call adds
+  narrative key-findings validated to drop uncited claims (flagged) + flag
+  overconfidence; verify only for ≥30-node graphs; mock echoes the seed. Cost
+  controls: max scope sources, max packet size, approximate call/record counts,
+  partial-coverage warning, confirmation for ≥2-call runs, no background
+  reasoning. Human judgment (`app/reason/[id]`): accept finding→Belief Inbox /
+  rewrite / question / reject; mark a candidate contradiction resolved or
+  unresolved; provisional conclusion + status; reopen a referenced inquiry;
+  attach the result to a Megathread; re-run pushes the prior result into
+  append-only history. Persistence: `reasonings` state + adapters + additive
+  migration `0009_reasoning_engine.sql` (own-rows RLS, rerunnable; migrations
+  0001–0008 untouched). New `/reason` + `/reason/[id]`; entry points from Nav,
+  Constitution (belief + header), Reader, Megathread. Verified: **19/19
+  reasoning checks** + **23/23 formation + 21/21 megathread + 22/22 dialectic +
+  15/15 comparison + 9/9 regression + 12/12 long-source + 16/16 PDF + 11/11
+  retrieval**, zero runtime errors; `lint`/`build` green. Still one AI route.
+  Supabase sync/RLS/cross-device of `reasonings` are code-complete but
+  credential-pending.
+- Date: 2026-07-12
+- **LIFEOS-013 — Daily formation & review: implemented.** A calm daily/weekly
+  review that helps the user reconnect with past knowledge and decide what
+  should change — LifeOS surfaces and asks, the human interprets and decides.
+  **No** embeddings, graph UI, background agents, notifications, streaks,
+  points, badges, or gamification; nothing high-stakes changes automatically.
+  New records (`types/mvp.ts`): `Reflection` (immutable `response` + separate
+  append-only `annotations`), `PracticeCandidate` (status machine + required
+  `derivedFrom` provenance + append-only `history`), `ReviewSession` (daily/
+  weekly with surfaced items, judgments, reflection ids, accepted practices,
+  optional synthesis). Daily selection (`lib/formation/daily.ts`,
+  `buildDailyReview`) is deterministic + explainable: ≤3 items from a fixed-
+  priority pool (questioned belief / unresolved question / recent thread change
+  / stale belief / past thought-or-quote), each with a reason, filtered by the
+  existing LIFEOS-009 feedback store (dismiss/snooze/postpone) and same-day
+  review history — no infinite feed. Reflection flow (`app/review`): affirm /
+  revise / question / dismiss / postpone / reflect; saving a reflection never
+  changes a belief; "revise" routes through the existing append-only
+  `reviseBelief` flow. Practices (`lib/formation/practice.ts` +
+  `practice_suggest`): AI proposes small practices citing derivation,
+  guardrailed against medical/legal/financial/dangerous/moralizing content,
+  provisional until the user accepts or rewrites — no scheduling, no streaks.
+  Weekly (`lib/formation/weekly.ts` + `weekly_synthesis`): deterministic counts
+  + week-over-week deltas first, **one optional** AI narrative whose highlights
+  cite real record ids (validated). Alignment (`alignment.ts` +
+  `alignment_reflection`): grounded only in accepted beliefs + reflections +
+  accepted practices, cautious wording, never accuses/diagnoses, never infers
+  from missing data. AI/cost: deterministic selection → capped packet (evidence
+  ids ARE record ids) → ≤1 call per user action → validation → mock fallback;
+  approximate call count shown; no background calls. Home stays quiet (one
+  "Begin today's review" link, no metrics). Persistence: `reflections`/
+  `practices`/`reviews` state + adapters + additive migration
+  `0008_formation_engine.sql` (immutable reflection response via trigger,
+  own-rows RLS, rerunnable; migrations 0001–0007 untouched). New `/review` +
+  `/review/weekly`; Nav "Review" + Home link. Verified: **23/23 formation
+  checks** + **21/21 megathread + 22/22 dialectic + 15/15 comparison + 9/9
+  regression + 12/12 long-source + 16/16 PDF + 11/11 retrieval**, zero runtime
+  errors; `lint`/`build` green. Still one AI route. Supabase sync/RLS/cross-
+  device of the new tables are code-complete but credential-pending.
+- Date: 2026-07-12
+- **LIFEOS-012 — Megathreads & longitudinal knowledge: implemented.** Living,
+  provenance-grounded VIEWS (not folders, not copies) showing how a topic /
+  question / belief develops across sources, captures, comparisons, inquiries,
+  judgments, and revisions over time. `Megathread` record stores a seed, human
+  title/description/status, **member references** (pointers to existing
+  records — no source text duplicated), curation (`pinned`/`excluded`), a
+  cautious synthesis + its evidence packet, unresolved questions, notes, and
+  append-only `judgments`/`revisions`. Membership (`lib/megathread/
+  membership.ts`) is deterministic + explainable: `initialMembers` seeds from
+  a belief/comparison/inquiry/source + direct inputs; `candidateMembers` adds
+  retrieval-related + structurally-linked records, each with a reason — AI
+  never silently adds, beliefs only by explicit user action. Timeline
+  (`lib/megathread/timeline.ts`) is a chronological READ-MODEL derived at
+  render time (never stored → never rewrites history), each event keeping
+  provenance (type/date/source/page/origin/relation); excluded members
+  skipped. Synthesis (`lib/megathread/run.ts` + `synthesis.ts`): capped
+  evidence packet (reuses inquiry evidence + inquiry findings) → **one**
+  `thread_synthesis` call on the single `/api/ai` route → strict validation
+  dropping points citing invalid evidence (flagged); belief-evolution +
+  recent-changes computed deterministically from the timeline and injected
+  (always accurate); mock (`lib/mockThreadSynthesis.ts`) works offline;
+  regeneration explicit, no background regen. Human curation
+  (`app/threads/[id]`): add/remove/pin/exclude members, edit title/desc/notes,
+  rewrite the current understanding, add/resolve questions, archive; each
+  synthesis insight → Accept into the Belief Inbox / Question / Reject;
+  Constitution never auto-changes. Persistence: `megathreads` state + adapters
+  + additive migration `0007_megathreads.sql` (jsonb row, own-rows RLS,
+  rerunnable; migrations 0001–0006 untouched). New `/threads` workspace +
+  `/threads/[id]`; entry points from Nav, Constitution, Reader, Compare,
+  Inquiry. Verified: **21/21 megathread checks** + **22/22 dialectic + 15/15
+  comparison + 9/9 regression + 12/12 long-source + 16/16 PDF + 11/11
+  retrieval**, zero runtime errors; `lint`/`build` green. No graph UI, agents,
+  or auto Constitution changes; still one AI route. Supabase sync/RLS/cross-
+  device of `megathreads` are code-complete but credential-pending.
+- Date: 2026-07-12
+- **LIFEOS-011 — Dialectical intelligence: implemented.** A dialectical
+  inquiry workspace that investigates one question through evidence,
+  arguments, objections, and unresolved tensions — without letting AI decide
+  what the user must believe, and never auto-changing the Constitution. Built
+  on the retrieval + comparison layers. Evidence packet
+  (`lib/dialectic/evidence.ts`) reuses `buildEvidence` for source/belief/
+  passage inputs, then appends belief **revisions**, prior **comparison
+  findings**, and **terminology** disputes, continuing the `E1…En` id
+  sequence; same caps. Flow: packet → **one** structured `dialectic` call on
+  the single `/api/ai` route → strict validation (`lib/dialectic/schema.ts`
+  drops any substantive assertion whose evidence ids aren't in the packet →
+  flagged) → **optional** `dialectic_verify` second pass for ≥4 sources. Mock
+  (`lib/mockDialectic.ts`) is honest: derives an affirmative case from
+  question/word overlap and states plainly it cannot detect a genuine
+  counter-position (no fake symmetric balance). Strict `DialecticResultData`:
+  question, definitions, assumptions, strongest affirmative/negative cases,
+  supporting evidence, counterarguments, rebuttals, terminology disputes,
+  distinctions, unresolved ambiguities, possible syntheses, what-would-change,
+  questions-for-human, relation-to-beliefs, reasoning issues, limitations.
+  Argument quality (Phase 5): `argType` tags (premise/conclusion/objection/
+  rebuttal/qualification/analogy/definition/empirical/interpretive/theological/
+  personal_judgment), named reasoning defects only when present, false-
+  certainty language flagged, disagreement ≠ contradiction. Human judgment
+  (`components/DialecticResult`): each insight → Accept/Rewrite into the
+  existing Belief Inbox, Question, Reject, or save without adopting; write your
+  own provisional conclusion; set status (open/provisional/unresolved/
+  resolved). Evolution: re-running with added sources pushes the prior result
+  into **append-only `history`** (never overwritten). Cost controls: max 5
+  sources, per-source + total caps, approximate call count, partial-coverage
+  warning, confirmation for ≥4-source runs. Persistence: `inquiries` state +
+  adapters + additive migration `0006_dialectical_intelligence.sql` (jsonb
+  row, own-rows RLS, rerunnable; migrations 0001–0005 untouched). New
+  `/inquiry` workspace + `/inquiry/[id]`; entry points from Nav, Compare,
+  Constitution, Reader. Verified: **22/22 dialectic checks** + **15/15
+  comparison + 9/9 regression + 12/12 long-source + 16/16 PDF + 11/11
+  retrieval**, zero runtime errors; `lint`/`build` green. No graph UI, agents,
+  or auto belief changes; still one AI route. Supabase sync/RLS/cross-device
+  of `inquiries` are code-complete but credential-pending.
+- Date: 2026-07-12
+- **LIFEOS-010 — Comparative intelligence: implemented.** Cross-source
+  comparison over 2–5 sources (or a belief + sources) that preserves genuine
+  differences and exact provenance. Flow is **deterministic-first**: a capped
+  evidence packet (`lib/comparison/evidence.ts` — per source: metadata,
+  summary, ≤3 chunk summaries, ≤4 exact quotes with page/offset, ≤6 concepts,
+  ≤3 candidate claims; belief text; passage quote — ranked for relevance to
+  the question via the LIFEOS-009 `search` engine, stable ids `E1…En`,
+  `MAX_PACKET_CHARS` budget) → **one** structured `compare` call on the
+  single `/api/ai` route → strict validation (`lib/comparison/schema.ts`
+  drops any point whose `evidenceIds` aren't in the packet → flagged, never
+  shown as a conclusion) → **optional** `compare_verify` second pass only for
+  ≥4 sources. Strict result schema (`ComparisonResultData`): title, question,
+  sources, shared concepts, agreements, disagreements (classified: logical /
+  practical / definitional / level-of-analysis / historical / ambiguity),
+  terminology differences, assumptions, strongest evidence per position,
+  unresolved tensions, questions, relation-to-beliefs, limitations, coverage
+  — every agreement/disagreement cites evidence ids. Terminology protection:
+  cautious language required, flattening phrasing ("identical",
+  "interchangeable") flagged. Human judgment (`components/ComparisonResult`):
+  each insight → Accept/Rewrite into the existing Belief Inbox, Question,
+  Reject, or save without adopting; **never** auto-updates the Constitution;
+  judgments append-only on the `Comparison`. Cost controls: max 5 sources,
+  per-source + total-size caps, approximate call count shown, partial-
+  coverage warning, confirmation for expensive (≥4-source) runs. Mock
+  (`lib/mockCompare.ts`) yields a real evidence-cited result offline.
+  Persistence: `comparisons` state + adapters + additive migration
+  `0005_comparative_intelligence.sql` (jsonb row, own-rows RLS, rerunnable;
+  migrations 0001–0004 untouched). New `/compare` workspace + `/compare/[id]`;
+  entry points from Nav, Library, Reader, Constitution. Verified: **15/15
+  comparison checks** (2-source, 5-source cap, belief-vs-sources, agreements/
+  disagreements cite evidence, partial coverage labeled, unsupported claims
+  dropped + flagged, insight → Inbox, Constitution unchanged, persistence) +
+  **9/9 regression + 12/12 long-source + 16/16 PDF + 11/11 retrieval**, zero
+  runtime errors; `lint`/`build` green. No graph UI, megathreads, or agents;
+  still one AI route. Supabase sync/RLS/cross-device of `comparisons` are
+  code-complete but credential-pending (local mode fully verified).
+- Date: 2026-07-12
+- **LIFEOS-009 — Intelligent Library retrieval: implemented (deterministic).**
+  Retrieval across every record type (source / summary / concept / quote /
+  chunk / candidate belief / capture / unresolved proposal / belief /
+  earlier revision) with **no embeddings, no pgvector, no AI route, no
+  background jobs** — it runs in-memory in the browser. `lib/retrieval/
+  records.ts` (`buildRecords`) projects the existing store into normalized
+  `RetrievalRecord`s that keep provenance (sourceId/page/href) and are
+  **never persisted** (no large-text duplication). `lib/retrieval/search.ts`
+  ranks with explainable weighted signals — exact phrase (×6), concept
+  overlap (×4), token overlap (×3), title/author (×2), page provenance,
+  belief-status boost, recency (×0.5) — exact + concept above recency; each
+  result carries a human "why it matched" reason and **raw scores are never
+  shown**. Dedup by normalized text + per-source diversity cap.
+  `relatedTo()` powers contextual "what else relates" (limit 5, 1/source).
+  Surfaces: **Library** search grouped by type with provenance/why-matched;
+  **Home** capture resurfacing (async, after save, ≤1 primary + up to 2
+  more, never blocks saving, quiet/dismissible); **Constitution** per-belief
+  related evidence (collapsed, excludes the belief itself, never
+  auto-resolves contradictions); **Reader** "find related from your library"
+  (collapsed, excludes current source). **Feedback** (relevant /
+  not_relevant / dismiss / snooze) persists to the append-only
+  `retrieval_feedback` table (migration `0004_retrieval.sql`, own-rows RLS)
+  and **only re-ranks/filters deterministically** — no ML recommender, no
+  auto belief changes, no cross-user data. Safeguards: limited counts,
+  source diversity, snoozed items hidden until expiry, no gamification.
+  Verified: **11/11 retrieval checks** (resurfacing appears + never blocks
+  save, grouped search, why-matched shown, no raw scores, feedback suppresses
+  the exact item + persists, Constitution/Reader related sections) +
+  **9/9 regression + 12/12 long-source + 16/16 PDF**, zero runtime errors;
+  `lint`/`build` green. Additive migration only; migrations 0001–0003
+  untouched.
 - Date: 2026-07-11
 - **LIFEOS-008 — Real PDF ingestion: implemented.** The `pdfAdapter` seam
   now does genuine **client-side, page-aware pdf.js extraction**
@@ -710,3 +930,175 @@ scope or order.
   9/9 regression + 12/12 long-source, no runtime errors); real-AI/Supabase
   persistence of the new columns remain credential-pending. `lint`=0,
   `build`=0.
+- 2026-07-12 — Implemented **LIFEOS-009 intelligent Library retrieval**,
+  fully **deterministic** (no embeddings, pgvector, AI route, or background
+  jobs). New: `lib/retrieval/records.ts` (`buildRecords` — a transient,
+  never-persisted normalized view over the store, with provenance),
+  `lib/retrieval/search.ts` (`search`/`relatedTo`/`resurfaceLabel` —
+  weighted explainable ranking: exact ×6, concept ×4, token ×3, title ×2,
+  provenance, status boost, recency ×0.5; dedup by normalized text +
+  per-source diversity cap; human "why matched" reason, never raw scores;
+  feedback boosts/suppresses deterministically), `components/
+  RetrievalResults.tsx` (shared results list with provenance + feedback
+  controls), `supabase/migrations/0004_retrieval.sql` (append-only
+  `retrieval_feedback`, own-rows RLS, rerunnable, migrations 0001–0003
+  untouched). Extended `types/mvp.ts` (`RecordType`, `RetrievalRecord`,
+  `FeedbackVerdict`, `FeedbackEntry`, `StoreState.feedback`),
+  `lib/mvpStore.ts` (`feedback` state + `recordFeedback` action),
+  `lib/persistence.ts` + `lib/adapters/localAdapter.ts` +
+  `lib/adapters/supabaseAdapter.ts` (carry/round-trip feedback). Wired into
+  the Library (grouped deep search replacing title-only filter at ≥2 chars),
+  Home (async capture resurfacing that never blocks the save; ≤1 primary +
+  up to 2 more), Constitution (collapsed per-belief related evidence,
+  excludes the belief, no auto contradiction resolution), and Reader
+  (collapsed "find related from your library", excludes current source).
+  Feedback tunes ranking **only** — no ML recommender, no auto belief
+  changes, no cross-user data. Verified 11/11 retrieval + 9/9 regression +
+  12/12 long-source + 16/16 PDF checks, zero runtime errors; `lint`=0,
+  `build`=0. Docs updated (`ARCHITECTURE.md`, `PERSISTENCE_QA.md`,
+  `PROJECT_MEMORY.md`). Still one AI route; no graphs/megathreads/agents.
+- 2026-07-12 — Implemented **LIFEOS-010 comparative intelligence**. New:
+  `lib/comparison/evidence.ts` (deterministic, capped, provenance-bearing
+  evidence packet built via the LIFEOS-009 retrieval layer),
+  `lib/comparison/schema.ts` (strict result validation — drops points citing
+  invalid evidence ids, flags flattening language), `lib/comparison/run.ts`
+  (orchestrator: packet → one `compare` call → validate → optional
+  `compare_verify` for ≥4 sources), `lib/mockCompare.ts` (deterministic
+  offline comparison), `components/ComparisonResult.tsx` (result view + human
+  judgment controls), `app/compare/page.tsx` + `app/compare/[id]/page.tsx`,
+  `supabase/migrations/0005_comparative_intelligence.sql`. Extended
+  `types/mvp.ts` (`ComparisonInputRef`, `EvidenceItem`/`EvidenceGroup`,
+  `ComparisonResultData` + sub-types, `Comparison`, `StoreState.comparisons`),
+  `app/api/ai/route.ts` (`compare` + `compare_verify` tasks, larger
+  max_tokens, evidence input parsing), `lib/aiClient.ts` (`runComparison` /
+  `verifyComparison`), `lib/mvpStore.ts` (`comparisons` state +
+  `saveComparison` / `judgeComparisonInsight`), `lib/persistence.ts`,
+  `lib/adapters/localAdapter.ts`, `lib/adapters/supabaseAdapter.ts` (load/
+  save/delete + row mappers). Entry points added to `components/Nav.tsx`,
+  `app/library/page.tsx`, `app/library/[id]/page.tsx`,
+  `app/constitution/page.tsx`. Insights flow into the existing Belief Inbox;
+  the Constitution is never changed automatically. Verified 15/15 comparison
+  + 9/9 regression + 12/12 long-source + 16/16 PDF + 11/11 retrieval checks,
+  zero runtime errors; `lint`=0, `build`=0. Supabase persistence of
+  `comparisons` (sync/RLS/cross-device) is code-complete but credential-
+  pending. No graph UI, megathreads, background agents, or new AI routes
+  beyond the single `/api/ai`.
+- 2026-07-12 — Implemented **LIFEOS-011 dialectical intelligence**. New:
+  `lib/dialectic/evidence.ts` (inquiry evidence packet — reuses comparison
+  evidence + belief revisions + comparison findings + terminology, continuing
+  the `E1…En` sequence), `lib/dialectic/schema.ts` (strict dialectic
+  validation — drops ungrounded substantive assertions, flags false-certainty/
+  flattening, clamps argType/fallacy tags), `lib/dialectic/run.ts`
+  (orchestrator: packet → one `dialectic` call → validate → optional
+  `dialectic_verify` for ≥4 sources; plus `evolveInquiryFlow` that appends to
+  history), `lib/mockDialectic.ts` (honest deterministic dialectic, no fake
+  balance), `components/DialecticResult.tsx` (result view + per-insight human
+  judgment), `app/inquiry/page.tsx` + `app/inquiry/[id]/page.tsx` (workspace,
+  detail with provisional conclusion / status / evolve / append-only history),
+  `supabase/migrations/0006_dialectical_intelligence.sql`. Extended
+  `types/mvp.ts` (`InquiryInputRef`, `ArgumentType`, `FallacyType`,
+  `DialecticPoint`, `DialecticResultData` + sub-types, `Inquiry`,
+  `InquiryRevision`, `StoreState.inquiries`; widened `EvidenceKind` +
+  `EvidenceGroup.ref`), `app/api/ai/route.ts` (`dialectic` +
+  `dialectic_verify` tasks, 4096 max_tokens for dialectic), `lib/aiClient.ts`
+  (`runDialectic` / `verifyDialectic`), `lib/mvpStore.ts` (`inquiries` state +
+  `saveInquiry` / `updateInquiry` / `judgeInquiryInsight` /
+  `setInquiryConclusion` / `setInquiryStatus`), `lib/persistence.ts`,
+  `lib/adapters/localAdapter.ts`, `lib/adapters/supabaseAdapter.ts` (load/
+  save/delete + row mappers). Entry points added to `components/Nav.tsx`,
+  `app/compare/[id]/page.tsx`, `app/constitution/page.tsx`,
+  `app/library/[id]/page.tsx`. Insights flow into the existing Belief Inbox;
+  the Constitution is never changed automatically; reasoning history is
+  append-only. Verified 22/22 dialectic + 15/15 comparison + 9/9 regression +
+  12/12 long-source + 16/16 PDF + 11/11 retrieval checks, zero runtime errors;
+  `lint`=0, `build`=0. Supabase persistence of `inquiries` (sync/RLS/cross-
+  device) is code-complete but credential-pending. No graph UI, autonomous
+  agents, auto Constitution changes, or new AI routes beyond the single
+  `/api/ai`.
+- 2026-07-12 — Implemented **LIFEOS-012 megathreads & longitudinal knowledge**.
+  New: `lib/megathread/membership.ts` (deterministic, explainable seed +
+  candidate members), `lib/megathread/timeline.ts` (chronological read-model,
+  never stored), `lib/megathread/evidence.ts` (capped packet reusing inquiry
+  evidence + inquiry findings), `lib/megathread/synthesis.ts` (strict
+  validation — drops ungrounded points, flags flattening), `lib/megathread/
+  run.ts` (orchestrator: one `thread_synthesis` call + deterministic belief-
+  evolution/recent-changes injection), `lib/mockThreadSynthesis.ts`,
+  `components/ThreadTimeline.tsx`, `components/ThreadSynthesis.tsx`,
+  `app/threads/page.tsx` + `app/threads/[id]/page.tsx`,
+  `supabase/migrations/0007_megathreads.sql`. Extended `types/mvp.ts`
+  (`Megathread`, `ThreadMemberRef`, `TimelineItem`, `ThreadSynthesisData`,
+  `MegathreadStatus`/`SeedType`, `StoreState.megathreads`),
+  `app/api/ai/route.ts` (`thread_synthesis` task, 3072 max_tokens),
+  `lib/aiClient.ts` (`synthesizeThread`), `lib/mvpStore.ts` (megathreads state
+  + create/update/member-curation/synthesis/questions/judgment actions),
+  `lib/persistence.ts`, `lib/adapters/localAdapter.ts`,
+  `lib/adapters/supabaseAdapter.ts` (load/save/delete + row mappers). Entry
+  points added to `components/Nav.tsx`, `app/constitution/page.tsx`,
+  `app/library/[id]/page.tsx`, `app/compare/[id]/page.tsx`,
+  `app/inquiry/[id]/page.tsx`. Threads store only references (no text copies);
+  timeline is derived; synthesis insights flow into the Belief Inbox; the
+  Constitution is never changed automatically. Verified 21/21 megathread +
+  22/22 dialectic + 15/15 comparison + 9/9 regression + 12/12 long-source +
+  16/16 PDF + 11/11 retrieval checks, zero runtime errors; `lint`=0,
+  `build`=0. Supabase persistence of `megathreads` (sync/RLS/cross-device) is
+  code-complete but credential-pending. No graph UI, autonomous agents, auto
+  Constitution changes, or new AI routes beyond the single `/api/ai`.
+- 2026-07-12 — Implemented **LIFEOS-013 formation engine (daily & weekly
+  review)**. New: `lib/formation/daily.ts` (deterministic ≤3-item selection,
+  feedback-filtered), `lib/formation/weekly.ts` (deterministic counts/deltas +
+  weekly-synthesis orchestrator), `lib/formation/alignment.ts` (cautious
+  alignment reflection), `lib/formation/practice.ts` (practice suggestion +
+  safety guardrails), `lib/formation/schema.ts` (weekly/alignment validation —
+  drop uncited claims, flag accusatory language), `lib/mockFormation.ts`,
+  `components/PracticeList.tsx`, `app/review/page.tsx` + `app/review/weekly/
+  page.tsx`, `supabase/migrations/0008_formation_engine.sql`. Extended
+  `types/mvp.ts` (`Reflection`, `PracticeCandidate`, `ReviewSession`,
+  `WeeklySynthesisData`, `AlignmentData`, `CitedClaim` + enums,
+  `StoreState.{reflections,practices,reviews}`), `app/api/ai/route.ts`
+  (`practice_suggest` / `weekly_synthesis` / `alignment_reflection` tasks; bumped
+  evidence-id length 12→64 so real record-id citations validate),
+  `lib/aiClient.ts` (`suggestPractices` / `weeklySynthesis` /
+  `alignmentReflection`), `lib/mvpStore.ts` (reflection/practice/review state +
+  actions + `getStoreSnapshot`), `lib/persistence.ts`,
+  `lib/adapters/localAdapter.ts`, `lib/adapters/supabaseAdapter.ts` (load/save/
+  delete + row mappers). Entry point added to `components/Nav.tsx` and the Home
+  page (one quiet link). Reflections never change beliefs; a revise routes
+  through the existing revision flow; practices require explicit acceptance;
+  the Constitution never changes automatically; Home has no gamification.
+  Verified 23/23 formation + 21/21 megathread + 22/22 dialectic + 15/15
+  comparison + 9/9 regression + 12/12 long-source + 16/16 PDF + 11/11 retrieval
+  checks, zero runtime errors; `lint`=0, `build`=0. Supabase persistence of the
+  new tables (sync/RLS/cross-device) is code-complete but credential-pending.
+  No embeddings, graph UI, autonomous agents, notifications/streaks/points, or
+  new AI routes beyond the single `/api/ai`.
+- 2026-07-12 — Implemented **LIFEOS-014 reasoning engine**. New:
+  `lib/reasoning/graph.ts` (scope resolution + internal evidence graph + capped
+  packet with real record-id evidence), `lib/reasoning/passes.ts` (deterministic
+  support/contradiction/influence/assumption/belief-impact/change-over-time/
+  unresolved passes — no truth scores, cautious tension classification, no
+  mutation), `lib/reasoning/schema.ts` (AI-layer validation — drop uncited
+  findings, flag overconfidence), `lib/reasoning/run.ts` (orchestrator: scope →
+  graph → deterministic pass → packet → one `reasoning_synthesis` call →
+  validate → optional `reasoning_verify` for ≥30 nodes; plus `rerunReasoning`
+  appending history), `lib/mockReasoning.ts`, `components/ReasoningResult.tsx`,
+  `app/reason/page.tsx` + `app/reason/[id]/page.tsx`,
+  `supabase/migrations/0009_reasoning_engine.sql`. Extended `types/mvp.ts`
+  (`ReasoningQuery`, `ReasoningMode`, `ReasoningScope`, `ReasoningNode`/`Edge`,
+  `ReasoningResultData`, `SupportAudit`, `ReasoningTension`, `InfluenceChain`,
+  `StoreState.reasonings`), `app/api/ai/route.ts` (`reasoning_synthesis` /
+  `reasoning_verify` tasks), `lib/aiClient.ts` (`reasoningSynthesis` /
+  `verifyReasoning`), `lib/mvpStore.ts` (reasoning state + save/update/judge/
+  conclusion/status/attach-to-thread actions), `lib/persistence.ts`,
+  `lib/adapters/localAdapter.ts`, `lib/adapters/supabaseAdapter.ts` (load/save/
+  delete + row mappers), `components/Nav.tsx` (+ flex-wrap for the fuller nav).
+  Entry points added to `app/constitution/page.tsx` (belief + header),
+  `app/library/[id]/page.tsx`, `app/threads/[id]/page.tsx`. Findings cite real
+  record ids; unsupported are dropped/flagged; a finding can enter the Belief
+  Inbox; a result can attach to a Megathread; a prior inquiry can be reopened;
+  reasoning history is append-only; the Constitution never changes
+  automatically. Verified 19/19 reasoning + 23/23 formation + 21/21 megathread +
+  22/22 dialectic + 15/15 comparison + 9/9 regression + 12/12 long-source +
+  16/16 PDF + 11/11 retrieval checks, zero runtime errors; `lint`=0, `build`=0.
+  Supabase persistence of `reasonings` (sync/RLS/cross-device) is code-complete
+  but credential-pending. No autonomous agents, graph UI, auto Constitution
+  changes, or new AI routes beyond the single `/api/ai`.

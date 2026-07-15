@@ -227,9 +227,709 @@ export interface KnowledgeSource {
   extractionStatus?: ExtractionStatus;
 }
 
+// ---------- Retrieval (LIFEOS-009) ----------
+
+export type RecordType =
+  | "source"
+  | "chunk"
+  | "summary"
+  | "concept"
+  | "quote"
+  | "capture"
+  | "proposal"
+  | "belief"
+  | "revision";
+
+/** A normalized, searchable view over existing data — built in memory, not persisted. */
+export interface RetrievalRecord {
+  id: string;
+  type: RecordType;
+  text: string;
+  title?: string;
+  sourceId?: string;
+  captureId?: string;
+  beliefId?: string;
+  page?: number;
+  status?: string;
+  concepts?: string[];
+  createdAt?: ISO;
+  updatedAt?: ISO;
+  href?: string;
+}
+
+export type FeedbackVerdict = "relevant" | "not_relevant" | "dismissed" | "snoozed";
+
+/** User feedback on a surfaced retrieval record — tunes future deterministic ranking. */
+export interface FeedbackEntry {
+  recordId: string;
+  verdict: FeedbackVerdict;
+  at: ISO;
+  /** Set when verdict is "snoozed": hidden until this time. */
+  snoozeUntil?: ISO;
+}
+
+// ---------- Comparative intelligence (LIFEOS-010) ----------
+
+/** What kind of material was selected into a comparison. */
+export type ComparisonInputKind = "source" | "belief" | "passage";
+
+/** A single selected material in a comparison, with enough to rebuild evidence. */
+export interface ComparisonInputRef {
+  kind: ComparisonInputKind;
+  /** Display label (source title / belief snippet / passage preview). */
+  label: string;
+  sourceId?: string;
+  beliefId?: string;
+  /** For passage inputs: the exact selected quote + provenance. */
+  quote?: string;
+  page?: number;
+}
+
+export type EvidenceKind =
+  | "metadata"
+  | "summary"
+  | "chunk_summary"
+  | "quote"
+  | "concept"
+  | "claim"
+  | "belief"
+  // ---- dialectical inquiry (LIFEOS-011) ----
+  | "revision"
+  | "comparison_finding"
+  | "terminology";
+
+/**
+ * One deterministic, provenance-bearing evidence item. Built from existing
+ * data (never fabricated) and referenced by id from the comparison result.
+ */
+export interface EvidenceItem {
+  /** Stable packet id, e.g. "E1". */
+  id: string;
+  kind: EvidenceKind;
+  /** Which selected material this belongs to (label). */
+  group: string;
+  sourceId?: string;
+  beliefId?: string;
+  chunkId?: string;
+  page?: number;
+  start?: number;
+  end?: number;
+  /** Exact text (verbatim for quotes). */
+  text: string;
+  /** Whether the underlying artifact came from real AI or the mock. */
+  origin?: "ai" | "mock";
+}
+
+/** Evidence grouped per selected material, with coverage honesty. */
+export interface EvidenceGroup {
+  /** A comparison input, or (LIFEOS-011) a dialectical-inquiry input. */
+  ref: ComparisonInputRef | InquiryInputRef;
+  coverage: Coverage | null;
+  /** True when only part of the source was analyzed/extracted. */
+  partial: boolean;
+  items: EvidenceItem[];
+}
+
+/** A synthesized point that MUST cite evidence ids. */
+export interface ComparisonPoint {
+  statement: string;
+  evidenceIds: string[];
+}
+
+/** Same term used differently, or different terms with similar function. */
+export interface TerminologyDifference {
+  term: string;
+  note: string;
+  evidenceIds: string[];
+}
+
+export type ContradictionKind =
+  | "logical"
+  | "practical"
+  | "definitional"
+  | "level_of_analysis"
+  | "historical"
+  | "ambiguity";
+
+export interface Disagreement extends ComparisonPoint {
+  /** Not every difference is a contradiction — classify it. */
+  kind: ContradictionKind;
+}
+
+export interface PositionEvidence {
+  position: string;
+  evidenceIds: string[];
+}
+
+/** Strict structured comparison result (Phase 4). */
+export interface ComparisonResultData {
+  title: string;
+  question: string;
+  sourcesCompared: string[];
+  sharedConcepts: string[];
+  agreements: ComparisonPoint[];
+  disagreements: Disagreement[];
+  terminologyDifferences: TerminologyDifference[];
+  assumptions: ComparisonPoint[];
+  strongestEvidence: PositionEvidence[];
+  unresolvedTensions: ComparisonPoint[];
+  questionsForUser: string[];
+  relationToBeliefs: ComparisonPoint[];
+  limitations: string[];
+  coverageNote: string;
+  /** Points dropped in verification for citing missing/invalid evidence. */
+  flagged?: string[];
+}
+
+export type ComparisonDecision = "accepted" | "rewritten" | "questioned" | "rejected";
+
+/** A human verdict on one comparison insight (append-only). */
+export interface ComparisonJudgment {
+  /** Which insight, e.g. "agreement:0" or "disagreement:2". */
+  insightRef: string;
+  decision: ComparisonDecision;
+  at: ISO;
+  note?: string;
+}
+
+/** A saved comparison — a PROPOSAL, never an automatic conclusion. */
+export interface Comparison {
+  id: string;
+  title: string;
+  question: string;
+  inputs: ComparisonInputRef[];
+  sourceIds: string[];
+  beliefIds: string[];
+  /** Flat evidence packet the result references by id. */
+  evidence: EvidenceItem[];
+  result: ComparisonResultData;
+  /** Model label ("mock" or the configured model). */
+  aiModel: string;
+  source: "ai" | "mock";
+  coverage: Coverage | null;
+  partial: boolean;
+  /** Whether a second verification pass ran. */
+  verified: boolean;
+  createdAt: ISO;
+  /** Append-only human judgments on the insights. */
+  judgments: ComparisonJudgment[];
+}
+
+// ---------- Dialectical intelligence (LIFEOS-011) ----------
+
+export type InquiryInputKind = "source" | "belief" | "passage" | "comparison";
+
+export interface InquiryInputRef {
+  kind: InquiryInputKind;
+  label: string;
+  sourceId?: string;
+  beliefId?: string;
+  comparisonId?: string;
+  quote?: string;
+  page?: number;
+}
+
+/** Argument taxonomy (Phase 5) — not every disagreement is a contradiction. */
+export type ArgumentType =
+  | "premise"
+  | "conclusion"
+  | "objection"
+  | "rebuttal"
+  | "qualification"
+  | "analogy"
+  | "definition"
+  | "empirical"
+  | "interpretive"
+  | "theological"
+  | "personal_judgment";
+
+/** Reasoning defects the dialectic may name (Phase 5) — cautiously. */
+export type FallacyType =
+  | "invalid_inference"
+  | "hidden_assumption"
+  | "equivocation"
+  | "circular_reasoning"
+  | "unsupported_generalization";
+
+/** A grounded dialectical assertion — MUST cite evidence. */
+export interface DialecticPoint {
+  statement: string;
+  evidenceIds: string[];
+  /** Optional argument-type tag. */
+  argType?: ArgumentType;
+}
+
+export interface DialecticDefinition {
+  term: string;
+  definition: string;
+}
+
+export interface ReasoningIssue {
+  kind: FallacyType;
+  note: string;
+  evidenceIds: string[];
+}
+
+/** Strict structured dialectic (Phase 4). Substantive assertions cite evidence. */
+export interface DialecticResultData {
+  question: string;
+  definitions: DialecticDefinition[];
+  assumptions: DialecticPoint[];
+  affirmativeCase: DialecticPoint[];
+  negativeCase: DialecticPoint[];
+  supportingEvidence: PositionEvidence[];
+  counterarguments: DialecticPoint[];
+  rebuttals: DialecticPoint[];
+  terminologyDisputes: TerminologyDifference[];
+  distinctions: string[];
+  unresolvedAmbiguities: string[];
+  possibleSyntheses: DialecticPoint[];
+  evidenceThatWouldChange: string[];
+  questionsForHuman: string[];
+  relationToBeliefs: DialecticPoint[];
+  reasoningIssues: ReasoningIssue[];
+  limitations: string[];
+  coverageNote: string;
+  /** Assertions dropped in verification for citing missing/invalid evidence. */
+  flagged?: string[];
+}
+
+export type InquiryStatus = "open" | "provisional" | "unresolved" | "resolved";
+
+/** One append-only prior state of an inquiry (never overwritten). */
+export interface InquiryRevision {
+  at: ISO;
+  result: DialecticResultData;
+  source: "ai" | "mock";
+  /** Labels of materials newly added at this step. */
+  addedInputs?: string[];
+  note?: string;
+}
+
+/** A saved dialectical inquiry — a reasoning aid, never an automatic verdict. */
+export interface Inquiry {
+  id: string;
+  question: string;
+  inputs: InquiryInputRef[];
+  sourceIds: string[];
+  beliefIds: string[];
+  comparisonIds: string[];
+  evidence: EvidenceItem[];
+  /** Latest structured dialectic. */
+  result: DialecticResultData;
+  /** Append-only history of prior results (older first). */
+  history: InquiryRevision[];
+  aiModel: string;
+  source: "ai" | "mock";
+  coverage: Coverage | null;
+  partial: boolean;
+  verified: boolean;
+  status: InquiryStatus;
+  /** The user's own provisional conclusion, if written. */
+  provisionalConclusion?: string;
+  /** Append-only human judgments on the insights. */
+  judgments: ComparisonJudgment[];
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
+// ---------- Megathreads & longitudinal knowledge (LIFEOS-012) ----------
+
+export type MegathreadStatus = "active" | "dormant" | "archived";
+
+export type MegathreadSeedType =
+  | "concept"
+  | "belief"
+  | "question"
+  | "source"
+  | "comparison"
+  | "inquiry"
+  | "manual";
+
+export type ThreadMemberType =
+  | "source"
+  | "capture"
+  | "belief"
+  | "proposal"
+  | "comparison"
+  | "inquiry";
+
+/** A member points to an existing record — no source text is duplicated. */
+export interface ThreadMemberRef {
+  type: ThreadMemberType;
+  id: string;
+  /** Whether the item was auto-suggested (deterministically) or user-added. */
+  addedBy: "auto" | "user";
+  /** Explainable reason it was associated (deterministic). */
+  reason?: string;
+  at?: ISO;
+}
+
+export type TimelineItemType =
+  | "capture"
+  | "source_added"
+  | "quote"
+  | "proposal"
+  | "judgment"
+  | "revision"
+  | "comparison"
+  | "inquiry"
+  | "provisional_conclusion"
+  | "belief_status";
+
+/** A derived, read-only timeline event (built from existing records, never stored). */
+export interface TimelineItem {
+  id: string;
+  type: TimelineItemType;
+  at: ISO;
+  title: string;
+  detail?: string;
+  origin?: "human" | "ai" | "mock";
+  sourceId?: string;
+  beliefId?: string;
+  page?: number;
+  href?: string;
+  /** Relationship to the thread seed / why it belongs. */
+  relation?: string;
+}
+
+/** Cautious thread synthesis (Phase 5). Substantive points cite evidence ids. */
+export interface ThreadSynthesisData {
+  currentUnderstanding: string;
+  majorPositions: DialecticPoint[];
+  agreements: ComparisonPoint[];
+  disagreements: ComparisonPoint[];
+  terminologyDifferences: TerminologyDifference[];
+  beliefEvolution: string[];
+  strongestSupport: PositionEvidence[];
+  strongestChallenge: PositionEvidence[];
+  unresolvedQuestions: string[];
+  recentChanges: string[];
+  limitations: string[];
+  coverageNote: string;
+  flagged?: string[];
+}
+
+export interface ThreadQuestion {
+  text: string;
+  resolved: boolean;
+}
+
+/** A living, provenance-grounded timeline of understanding (not a folder). */
+export interface Megathread {
+  id: string;
+  title: string;
+  description?: string;
+  status: MegathreadStatus;
+  seedType: MegathreadSeedType;
+  seedId?: string;
+  seedLabel?: string;
+  /** Explicit member references (auto-suggested + user-added). */
+  members: ThreadMemberRef[];
+  /** Member ids featured/pinned (also drives featured order). */
+  pinned: string[];
+  /** Record ids the user explicitly excluded (never re-suggested). */
+  excluded: string[];
+  synthesis?: ThreadSynthesisData;
+  synthesisSource?: "ai" | "mock" | "user";
+  /** The evidence packet the current synthesis cites. */
+  synthesisEvidence?: EvidenceItem[];
+  unresolvedQuestions: ThreadQuestion[];
+  notes?: string;
+  /** Append-only human judgments on synthesis insights. */
+  judgments: ComparisonJudgment[];
+  /** Append-only change log (never rewritten). */
+  revisions: { at: ISO; note: string }[];
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
+// ---------- Daily formation & review (LIFEOS-013) ----------
+
+/** A later note on a reflection, stored SEPARATELY from the immutable original. */
+export interface ReflectionAnnotation {
+  text: string;
+  at: ISO;
+}
+
+/** A written reflection. `response` is immutable; annotations are append-only. */
+export interface Reflection {
+  id: string;
+  prompt: string;
+  /** The user's original response — never edited in place. */
+  response: string;
+  createdAt: ISO;
+  beliefIds?: string[];
+  threadIds?: string[];
+  sourceIds?: string[];
+  /** Optional mood/context the user attached. */
+  context?: string;
+  /** Later notes/revisions kept separate from the original. */
+  annotations: ReflectionAnnotation[];
+}
+
+export type PracticeStatus = "proposed" | "accepted" | "paused" | "completed" | "rejected";
+/** A cadence SUGGESTION only — LifeOS never schedules or tracks streaks. */
+export type PracticeCadence = "once" | "daily" | "weekly" | "occasional";
+
+export interface PracticeHistoryEntry {
+  at: ISO;
+  status: PracticeStatus;
+  note?: string;
+}
+
+/** Which records a practice was derived from (provenance is required). */
+export interface PracticeDerivation {
+  beliefIds?: string[];
+  threadIds?: string[];
+  inquiryIds?: string[];
+}
+
+/** A small, modest, reviewable practice proposed from a belief/thread. */
+export interface PracticeCandidate {
+  id: string;
+  title: string;
+  description: string;
+  rationale: string;
+  derivedFrom: PracticeDerivation;
+  cadence?: PracticeCadence;
+  status: PracticeStatus;
+  /** The user's own wording once edited. */
+  userWording?: string;
+  source: "ai" | "mock" | "user";
+  createdAt: ISO;
+  updatedAt: ISO;
+  /** Append-only status history. */
+  history: PracticeHistoryEntry[];
+}
+
+export type ReviewType = "daily" | "weekly" | "monthly";
+
+export type SurfacedItemKind =
+  | "stale_belief"
+  | "questioned_belief"
+  | "unresolved_question"
+  | "quote"
+  | "capture"
+  | "thread_change";
+
+/** One deterministically-selected item surfaced in a review, with its reason. */
+export interface ReviewSurfacedItem {
+  id: string;
+  kind: SurfacedItemKind;
+  refId?: string;
+  beliefId?: string;
+  sourceId?: string;
+  threadId?: string;
+  title: string;
+  /** Why this surfaced — always shown to the user. */
+  reason: string;
+  href?: string;
+}
+
+export type ReviewDecision =
+  | "affirmed"
+  | "revised"
+  | "questioned"
+  | "dismissed"
+  | "postponed"
+  | "reflected";
+
+export interface ReviewJudgment {
+  itemId: string;
+  decision: ReviewDecision;
+  at: ISO;
+  note?: string;
+}
+
+/** A cited claim in a weekly synthesis / alignment reflection. */
+export interface CitedClaim {
+  statement: string;
+  recordIds: string[];
+}
+
+export interface WeeklySynthesisData {
+  narrative: string;
+  highlights: CitedClaim[];
+  recurringConcepts: string[];
+  unresolvedTensions: string[];
+  changesFromLastWeek: string[];
+  limitations: string[];
+  flagged?: string[];
+}
+
+export interface AlignmentData {
+  observations: CitedClaim[];
+  questions: string[];
+  limitations: string[];
+  flagged?: string[];
+}
+
+export interface ReviewSession {
+  id: string;
+  type: ReviewType;
+  surfaced: ReviewSurfacedItem[];
+  prompts?: string[];
+  reflectionIds: string[];
+  judgments: ReviewJudgment[];
+  acceptedPracticeIds: string[];
+  unresolvedQuestions: string[];
+  /** Weekly narrative (weekly reviews only). */
+  synthesis?: WeeklySynthesisData;
+  synthesisSource?: "ai" | "mock";
+  alignment?: AlignmentData;
+  alignmentSource?: "ai" | "mock";
+  startedAt: ISO;
+  completedAt?: ISO;
+}
+
+// ---------- Reasoning engine (LIFEOS-014) ----------
+
+export type ReasoningMode =
+  | "support_audit"
+  | "contradiction_audit"
+  | "influence_trace"
+  | "assumption_audit"
+  | "belief_impact"
+  | "unresolved_synthesis"
+  | "change_over_time"
+  | "open_inquiry";
+
+export type ReasoningScopeKind =
+  | "all"
+  | "sources"
+  | "beliefs"
+  | "threads"
+  | "comparisons"
+  | "inquiries";
+
+export interface ReasoningScope {
+  kind: ReasoningScopeKind;
+  sourceIds?: string[];
+  beliefIds?: string[];
+  threadIds?: string[];
+  comparisonIds?: string[];
+  inquiryIds?: string[];
+  /** For belief_impact: a proposed belief NOT yet in the Constitution. */
+  proposedBelief?: string;
+}
+
+/** Internal reasoning-graph node (never rendered as a graph). */
+export type ReasoningNodeType =
+  | "source" | "chunk" | "quote" | "concept" | "capture" | "proposal"
+  | "belief" | "revision" | "comparison" | "inquiry" | "megathread"
+  | "reflection" | "practice" | "review";
+
+export interface ReasoningNode {
+  id: string;
+  type: ReasoningNodeType;
+  refId: string;
+  label: string;
+  at?: ISO;
+}
+
+export type ReasoningEdgeType =
+  | "supports" | "challenges" | "derived_from" | "revised_from" | "references"
+  | "belongs_to" | "influenced_by" | "questioned_by" | "compared_with" | "investigated_by";
+
+export interface ReasoningEdge {
+  from: string;
+  to: string;
+  type: ReasoningEdgeType;
+}
+
+/** A finding that MUST cite record/evidence ids. */
+export interface ReasoningFinding {
+  statement: string;
+  evidenceIds: string[];
+}
+
+/** A cautiously-classified tension — never all flattened to "contradiction". */
+export interface ReasoningTension extends ReasoningFinding {
+  kind: ContradictionKind;
+}
+
+export interface InfluenceChain {
+  /** Ordered labels, e.g. ["Source: X", "Quote", "Belief: Y"]. */
+  chain: string[];
+  evidenceIds: string[];
+}
+
+/** Deterministic support-audit counts for one belief (no truth score). */
+export interface SupportAudit {
+  beliefId: string;
+  beliefText: string;
+  supportingSources: number;
+  challengingSources: number;
+  supportingQuotes: number;
+  revisions: number;
+  unresolvedQuestions: number;
+  evidenceDiversity: number;
+  evidenceIds: string[];
+}
+
+export interface ReasoningResultData {
+  question: string;
+  mode: ReasoningMode;
+  scopeSummary: string;
+  keyFindings: ReasoningFinding[];
+  supportingEvidence: PositionEvidence[];
+  challengingEvidence: PositionEvidence[];
+  candidateContradictions: ReasoningTension[];
+  assumptions: ReasoningFinding[];
+  influenceChains: InfluenceChain[];
+  affectedBeliefs: ReasoningFinding[];
+  supportAudits: SupportAudit[];
+  unresolvedQuestions: string[];
+  alternativeInterpretations: string[];
+  limitations: string[];
+  coverageNote: string;
+  questionsForHuman: string[];
+  flagged?: string[];
+}
+
+export type ReasoningStatus = "open" | "provisional" | "resolved";
+
+export interface ReasoningRevision {
+  at: ISO;
+  result: ReasoningResultData;
+  source: "ai" | "mock";
+  note?: string;
+  scopeChanged?: boolean;
+}
+
+export interface ReasoningQuery {
+  id: string;
+  question: string;
+  mode: ReasoningMode;
+  scope: ReasoningScope;
+  evidence: EvidenceItem[];
+  result: ReasoningResultData;
+  /** Append-only prior results (older first). */
+  history: ReasoningRevision[];
+  aiModel: string;
+  source: "ai" | "mock";
+  coverage: Coverage | null;
+  partial: boolean;
+  verified: boolean;
+  status: ReasoningStatus;
+  provisionalConclusion?: string;
+  judgments: ComparisonJudgment[];
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
   beliefs: Belief[];
   sources: KnowledgeSource[];
+  feedback: FeedbackEntry[];
+  comparisons: Comparison[];
+  inquiries: Inquiry[];
+  megathreads: Megathread[];
+  reflections: Reflection[];
+  practices: PracticeCandidate[];
+  reviews: ReviewSession[];
+  reasonings: ReasoningQuery[];
 }

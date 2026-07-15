@@ -15,6 +15,12 @@ import {
   mockSummary,
   type ChunkMap,
 } from "@/lib/mockAI";
+import { mockCompare } from "@/lib/mockCompare";
+import { mockDialectic } from "@/lib/mockDialectic";
+import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
+import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFormation";
+import { mockReasoning } from "@/lib/mockReasoning";
+import type { EvidenceItem } from "@/types/mvp";
 
 export type AiSource = "ai" | "mock";
 export type { ChunkMap } from "@/lib/mockAI";
@@ -70,5 +76,126 @@ export function mapChunk(text: string) {
 export function reduceSummary(summaries: string[]) {
   return call<string>({ task: "reduce_summary", summaries }, () =>
     mockReduceSummary(summaries),
+  );
+}
+
+// ---------- Comparative intelligence (LIFEOS-010) ----------
+
+/** Evidence sent to the compare task (provenance kept for prompt + citation). */
+function toWire(evidence: EvidenceItem[]) {
+  return evidence.map((e) => ({ id: e.id, group: e.group, kind: e.kind, text: e.text, page: e.page }));
+}
+
+/** One structured comparison call. Returns the RAW result object (validated by caller). */
+export function runComparison(args: {
+  evidence: EvidenceItem[];
+  question: string;
+  title: string;
+  sourcesCompared: string[];
+  coverageNote: string;
+}) {
+  const wire = toWire(args.evidence);
+  return call<unknown>(
+    {
+      task: "compare",
+      evidence: wire,
+      question: args.question,
+      title: args.title,
+      sourcesCompared: args.sourcesCompared,
+      coverageNote: args.coverageNote,
+    },
+    () =>
+      mockCompare({
+        evidence: args.evidence,
+        question: args.question,
+        title: args.title,
+        sourcesCompared: args.sourcesCompared,
+        coverageNote: args.coverageNote,
+      }),
+  );
+}
+
+/** Optional second-opinion verification pass (larger comparisons only). */
+export function verifyComparison(evidence: EvidenceItem[], draft: unknown) {
+  return call<{ cautions?: string[]; removeStatements?: string[] }>(
+    { task: "compare_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
+    () => ({ cautions: [], removeStatements: [] }),
+  );
+}
+
+// ---------- Dialectical intelligence (LIFEOS-011) ----------
+
+/** One structured dialectic call. Returns the RAW result object (validated by caller). */
+export function runDialectic(args: { evidence: EvidenceItem[]; question: string; coverageNote: string }) {
+  return call<unknown>(
+    {
+      task: "dialectic",
+      evidence: toWire(args.evidence),
+      question: args.question,
+      coverageNote: args.coverageNote,
+    },
+    () => mockDialectic({ evidence: args.evidence, question: args.question, coverageNote: args.coverageNote }),
+  );
+}
+
+/** Optional second-opinion verification pass (larger inquiries only). */
+export function verifyDialectic(evidence: EvidenceItem[], draft: unknown) {
+  return call<{ cautions?: string[]; removeStatements?: string[] }>(
+    { task: "dialectic_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
+    () => ({ cautions: [], removeStatements: [] }),
+  );
+}
+
+// ---------- Megathreads (LIFEOS-012) ----------
+
+/** One structured thread-synthesis call. Returns the RAW object (validated by caller). */
+export function synthesizeThread(args: { evidence: EvidenceItem[]; title: string; coverageNote: string }) {
+  return call<unknown>(
+    { task: "thread_synthesis", evidence: toWire(args.evidence), title: args.title, coverageNote: args.coverageNote },
+    () => mockThreadSynthesis({ evidence: args.evidence, title: args.title, coverageNote: args.coverageNote }),
+  );
+}
+
+// ---------- Daily formation (LIFEOS-013) ----------
+
+/** Suggest small practices from a belief/thread packet. RAW object (validated by caller). */
+export function suggestPractices(args: { evidence: EvidenceItem[] }) {
+  return call<unknown>(
+    { task: "practice_suggest", evidence: toWire(args.evidence) },
+    () => mockPractices({ evidence: args.evidence }),
+  );
+}
+
+/** One weekly narrative synthesis. `summary` carries the deterministic counts. */
+export function weeklySynthesis(args: { evidence: EvidenceItem[]; summary: string }) {
+  return call<unknown>(
+    { task: "weekly_synthesis", evidence: toWire(args.evidence), question: args.summary },
+    () => mockWeeklySynthesis({ evidence: args.evidence, summary: args.summary }),
+  );
+}
+
+/** One cautious alignment reflection over accepted beliefs + reflections + practices. */
+export function alignmentReflection(args: { evidence: EvidenceItem[] }) {
+  return call<unknown>(
+    { task: "alignment_reflection", evidence: toWire(args.evidence) },
+    () => mockAlignment({ evidence: args.evidence }),
+  );
+}
+
+// ---------- Reasoning engine (LIFEOS-014) ----------
+
+/** One AI synthesis over the reasoning packet. RAW object (validated by caller). */
+export function reasoningSynthesis(args: { evidence: EvidenceItem[]; question: string; mode: string }) {
+  return call<unknown>(
+    { task: "reasoning_synthesis", evidence: toWire(args.evidence), question: args.question, title: args.mode },
+    () => mockReasoning({ evidence: args.evidence, question: args.question, mode: args.mode }),
+  );
+}
+
+/** Optional verification pass for large-scope reasoning. */
+export function verifyReasoning(evidence: EvidenceItem[], draft: unknown) {
+  return call<{ cautions?: string[]; removeStatements?: string[] }>(
+    { task: "reasoning_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
+    () => ({ cautions: [], removeStatements: [] }),
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Belief } from "@/types/mvp";
 import {
   affirmBelief,
@@ -11,7 +11,10 @@ import {
   reviseBelief,
   useStore,
 } from "@/lib/mvpStore";
+import { buildRecords } from "@/lib/retrieval/records";
+import { relatedTo } from "@/lib/retrieval/search";
 import ThreadLine from "@/components/ThreadLine";
+import RetrievalResults from "@/components/RetrievalResults";
 
 const STATUS_LABEL: Record<Belief["status"], string> = {
   accepted: "Accepted",
@@ -33,6 +36,17 @@ function BeliefRow({ belief }: { belief: Belief }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(belief.text);
+  const [showRelated, setShowRelated] = useState(false);
+
+  // Related evidence from across the library — deterministic, explainable,
+  // and collapsed by default. LifeOS never auto-resolves contradictions; it
+  // only surfaces what might bear on this belief.
+  const related = useMemo(() => {
+    if (!open) return [];
+    return relatedTo(belief.text, buildRecords(state), state.feedback, {}).filter(
+      (r) => r.record.beliefId !== belief.id,
+    );
+  }, [open, belief.text, belief.id, state]);
 
   function saveRevision() {
     if (draft.trim() && draft.trim() !== belief.text) {
@@ -96,6 +110,52 @@ function BeliefRow({ belief }: { belief: Belief }) {
             {belief.judgments.length} judgment
             {belief.judgments.length === 1 ? "" : "s"}
           </p>
+
+          {/* Compare / challenge this belief (entry points) */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <Link
+              href={`/compare?belief=${belief.id}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Compare this belief with sources →
+            </Link>
+            <Link
+              href={`/inquiry?belief=${belief.id}&q=${encodeURIComponent(`What is the strongest objection to: ${belief.text}`)}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Challenge this belief →
+            </Link>
+            <Link
+              href={`/threads?seedType=belief&seedId=${belief.id}&title=${encodeURIComponent(belief.theme || belief.text.slice(0, 40))}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Create Megathread →
+            </Link>
+            <Link
+              href={`/reason?mode=support_audit&belief=${belief.id}&q=${encodeURIComponent(`How well supported is: ${belief.text.slice(0, 50)}`)}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Audit support →
+            </Link>
+          </div>
+
+          {/* Related evidence — collapsed, never auto-resolving */}
+          {related.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowRelated((s) => !s)}
+                className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              >
+                {showRelated ? "Hide" : "Show"} related evidence ({related.length})
+              </button>
+              {showRelated && (
+                <div className="mt-1">
+                  <RetrievalResults results={related} />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Evolve this belief over time */}
           {editing ? (
@@ -201,15 +261,25 @@ export default function ConstitutionPage() {
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-16">
-      <header className="mb-10">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          What I currently believe
-        </h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          {active.length} belief{active.length === 1 ? "" : "s"} across{" "}
-          {themes.length} theme{themes.length === 1 ? "" : "s"}
-          {questioned > 0 && ` · ${questioned} still open`}
-        </p>
+      <header className="mb-10 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            What I currently believe
+          </h1>
+          <p className="mt-2 text-sm text-zinc-500">
+            {active.length} belief{active.length === 1 ? "" : "s"} across{" "}
+            {themes.length} theme{themes.length === 1 ? "" : "s"}
+            {questioned > 0 && ` · ${questioned} still open`}
+          </p>
+        </div>
+        {active.length >= 2 && (
+          <Link
+            href="/reason?mode=contradiction_audit&q=What%20tensions%20exist%20among%20my%20beliefs%3F"
+            className="shrink-0 rounded-full border border-black/[.12] px-4 py-2 text-sm font-medium hover:bg-black/[.04] dark:border-white/[.15] dark:hover:bg-white/[.06]"
+          >
+            Find tensions
+          </Link>
+        )}
       </header>
 
       <div className="flex flex-col gap-10">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   beliefsFromSource,
   patchSource,
@@ -17,6 +17,9 @@ import { analyzeSource, cancelAnalysis, estimateCalls, runStage } from "@/lib/pi
 import { extractPdf } from "@/lib/ingestion/pdfExtract";
 import { askQuestion, generateBeliefs } from "@/lib/aiClient";
 import { PROCESSING_LABELS, SOURCE_TYPE_LABELS, isProcessing } from "@/lib/labels";
+import { buildRecords } from "@/lib/retrieval/records";
+import { relatedTo } from "@/lib/retrieval/search";
+import RetrievalResults from "@/components/RetrievalResults";
 import type { ExtractionStatus, KnowledgeSource, StageName } from "@/types/mvp";
 
 const EXTRACTION_LABELS: Record<ExtractionStatus, string> = {
@@ -38,6 +41,17 @@ export default function ReaderPage() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [sending, setSending] = useState(false);
+  const [showRelated, setShowRelated] = useState(false);
+
+  // Contextual retrieval from OTHER sources — deterministic, collapsed by
+  // default, and excluding this source's own records.
+  const relatedElsewhere = useMemo(() => {
+    if (!source || !showRelated) return [];
+    const seed = source.summary || source.title;
+    return relatedTo(seed, buildRecords(state), state.feedback, {
+      excludeSourceId: id,
+    });
+  }, [showRelated, source, id, state]);
 
   // Mark as "reading" the first time it's opened.
   useEffect(() => {
@@ -385,8 +399,30 @@ export default function ReaderPage() {
             </section>
           )}
 
+          {/* Related from OTHER sources — collapsed contextual retrieval */}
+          <section className="mb-6">
+            <button
+              type="button"
+              onClick={() => setShowRelated((s) => !s)}
+              className="text-xs font-semibold uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              {showRelated ? "Hide" : "Find"} related from your library
+            </button>
+            {showRelated && (
+              <div className="mt-2">
+                {relatedElsewhere.length > 0 ? (
+                  <RetrievalResults results={relatedElsewhere} />
+                ) : (
+                  <p className="text-sm text-zinc-400">
+                    Nothing else in your library looks closely related yet.
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+
           {/* Footer controls */}
-          <footer className="mt-8 flex flex-wrap gap-3 border-t border-black/[.05] pt-4 dark:border-white/[.06]">
+          <footer className="mt-8 flex flex-wrap items-center gap-3 border-t border-black/[.05] pt-4 dark:border-white/[.06]">
             {source.status !== "read" && (
               <button
                 type="button"
@@ -396,6 +432,30 @@ export default function ReaderPage() {
                 Mark as read
               </button>
             )}
+            <Link
+              href={`/compare?add=${id}`}
+              className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              Compare with another source →
+            </Link>
+            <Link
+              href={`/inquiry?add=${id}&q=${encodeURIComponent(`What does ${source.title} imply about `)}`}
+              className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              Investigate this passage →
+            </Link>
+            <Link
+              href={`/threads?seedType=source&seedId=${id}&title=${encodeURIComponent(source.title)}`}
+              className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              Add to Megathread →
+            </Link>
+            <Link
+              href={`/reason?mode=influence_trace&source=${id}&q=${encodeURIComponent(`What did ${source.title} influence?`)}`}
+              className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              Trace influence →
+            </Link>
           </footer>
         </>
       )}
