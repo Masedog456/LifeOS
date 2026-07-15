@@ -41,10 +41,12 @@ import type {
   WeeklySynthesisData,
   ReasoningQuery,
   ReasoningStatus,
+  EmbeddingRecord,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
 import { clearState, loadState, saveLocalOnly, saveState } from "@/lib/persistence";
+import { makeFingerprint, threadDeps, weeklyDeps } from "@/lib/freshness/fingerprint";
 
 /** Stable empty state — used for the server snapshot and pre-hydration client render. */
 const EMPTY_STATE: StoreState = {
@@ -60,6 +62,7 @@ const EMPTY_STATE: StoreState = {
   practices: [],
   reviews: [],
   reasonings: [],
+  embeddings: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -162,6 +165,7 @@ export function hydrate() {
           history: asArray<ReasoningQuery["history"][number]>(q?.history),
           judgments: asArray<ReasoningQuery["judgments"][number]>(q?.judgments),
         })),
+        embeddings: asArray<EmbeddingRecord>(parsed.embeddings),
       };
       emit();
     }
@@ -175,7 +179,7 @@ export function resetStore() {
   clearState();
   setState({
     captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
-    comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [],
+    comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [],
   });
 }
 
@@ -552,6 +556,11 @@ export function saveComparison(comparison: Comparison): void {
   setState({ ...state, comparisons: [comparison, ...state.comparisons] });
 }
 
+/** Replace a comparison in place (used by rerun; history already appended). */
+export function updateComparison(comparison: Comparison): void {
+  setState({ ...state, comparisons: state.comparisons.map((c) => (c.id === comparison.id ? comparison : c)) });
+}
+
 /** Append a human judgment on one comparison insight (append-only). */
 export function judgeComparisonInsight(
   comparisonId: string,
@@ -734,7 +743,13 @@ export function setThreadSynthesis(
 ): void {
   patchThread(
     threadId,
-    (t) => ({ ...t, synthesis, synthesisSource: source, synthesisEvidence: evidence ?? t.synthesisEvidence }),
+    (t) => ({
+      ...t,
+      synthesis,
+      synthesisSource: source,
+      synthesisEvidence: evidence ?? t.synthesisEvidence,
+      fingerprint: makeFingerprint(state, threadDeps(t)),
+    }),
     source === "user" ? "Synthesis rewritten by you" : "Synthesis regenerated",
   );
 }
@@ -910,7 +925,20 @@ export function markPracticeAcceptedInReview(reviewId: string, practiceId: strin
 }
 
 export function setReviewSynthesis(reviewId: string, synthesis: WeeklySynthesisData, source: "ai" | "mock"): void {
-  patchReview(reviewId, (r) => ({ ...r, synthesis, synthesisSource: source }));
+  patchReview(reviewId, (r) => {
+    const next = { ...r, synthesis, synthesisSource: source };
+    return { ...next, fingerprint: makeFingerprint(state, weeklyDeps(next)) };
+  });
+}
+
+// ---------- Semantic index actions (LIFEOS-015) ----------
+
+/** Merge new embeddings, replacing any prior embedding for the same record. */
+export function addEmbeddings(records: EmbeddingRecord[]): void {
+  if (records.length === 0) return;
+  const byId = new Map(state.embeddings.map((e) => [e.recordId, e]));
+  for (const r of records) byId.set(r.recordId, r);
+  setState({ ...state, embeddings: [...byId.values()] });
 }
 
 export function setReviewAlignment(reviewId: string, alignment: AlignmentData, source: "ai" | "mock"): void {

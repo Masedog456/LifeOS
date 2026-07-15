@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { InquiryInputRef, InquiryStatus } from "@/types/mvp";
 import {
+  getStoreSnapshot,
   inquiryById,
   setInquiryConclusion,
   setInquiryStatus,
@@ -12,7 +13,9 @@ import {
   useStore,
 } from "@/lib/mvpStore";
 import { evolveInquiryFlow, MAX_SOURCES } from "@/lib/dialectic/run";
+import { inquiryDeps } from "@/lib/freshness/fingerprint";
 import DialecticResult from "@/components/DialecticResult";
+import FreshnessBadge from "@/components/FreshnessBadge";
 
 const STATUSES: InquiryStatus[] = ["open", "provisional", "unresolved", "resolved"];
 
@@ -76,6 +79,19 @@ export default function InquiryDetailPage() {
         >
           Create thread →
         </Link>
+      </div>
+
+      <div className="mt-4">
+        <FreshnessBadge
+          state={state}
+          fingerprint={inquiry.fingerprint}
+          currentIds={inquiryDeps(inquiry)}
+          approxAiCalls={inquiry.verified ? 2 : 1}
+          onRerun={async () => {
+            const next = await evolveInquiryFlow(getStoreSnapshot(), inquiry, []);
+            updateInquiry(next);
+          }}
+        />
       </div>
 
       <div className="mt-4">

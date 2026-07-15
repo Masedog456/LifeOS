@@ -66,7 +66,17 @@
    migrations 0001–0008, existing rows, other tables, or their RLS. The
    `evidence` column holds references to existing records — never copies of
    source text.
-10. **Project Settings → API**: copy the **Project URL** and the **anon
+10. Then run `supabase/migrations/0010_semantic_retrieval.sql` (LIFEOS-015 —
+    `create extension if not exists vector`, then the `embeddings` table:
+    one row per embedded record with a `content_hash` for idempotency, a
+    dimensionless `vector` column, own-rows RLS, and a user-scoped
+    `match_embeddings` RPC that can only ever match the caller's own vectors —
+    **no cross-user similarity results**). Additive and rerunnable; it does not
+    touch migrations 0001–0009, existing rows, other tables, or their RLS. The
+    `embeddings` rows hold vectors + provenance — never keys or full-source
+    text. Semantic retrieval is optional: with no embeddings, deterministic
+    search works fully.
+11. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -93,7 +103,18 @@ NEXT_PUBLIC_SUPABASE_URL=<your Project URL>
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<your anon public key>
 ANTHROPIC_API_KEY=<your Anthropic key>     # server-only; blank = mock
 ANTHROPIC_MODEL=claude-sonnet-5            # optional
+# --- Optional embedding provider (LIFEOS-015). All server-only. If unset, a
+# --- built-in local lexical embedder is used and everything still works.
+EMBEDDING_PROVIDER_URL=<OpenAI-compatible /embeddings endpoint>  # optional
+EMBEDDING_API_KEY=<embedding provider key>                       # optional, server-only
+EMBEDDING_MODEL=<embedding model id>                             # optional
+EMBEDDING_DIMENSIONS=1536                                        # optional
 ```
+
+The embedding credentials are **server-only** (no `NEXT_PUBLIC_` prefix) and
+must never be exposed to the browser. Semantic retrieval is optional: with no
+embedding provider configured, indexing uses the local lexical embedder and
+deterministic retrieval is unaffected.
 
 ### 3. Vercel (Production + Preview scopes)
 Add the same four variables in **Project → Settings → Environment
@@ -183,6 +204,15 @@ changes runtime behavior.
       inquiry can be reopened; re-run keeps append-only history; the
       Constitution never changes automatically; results persist after refresh.
       (19/19 automated checks, mock mode.)
+- [x] **Semantic retrieval & freshness (LIFEOS-015):** deterministic search
+      works with no index; after user-triggered indexing, semantic search finds
+      a paraphrase (labeled "Semantically related") while an exact match still
+      outranks a weak semantic one; unchanged records are not re-embedded and
+      changed records get a new embedding (content-hash idempotency); semantic
+      similarity alone never labels two beliefs contradictory (opposing polarity
+      still required); a saved result detects changed evidence and shows why;
+      re-running preserves prior history and never overwrites the user's
+      provisional conclusion. (19/19 automated checks, local-embedder mode.)
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
@@ -236,6 +266,12 @@ changes runtime behavior.
 - [ ] Reasoning sync: run a reasoning query (and re-run it) in Browser A → it
       appears in Browser B with its full append-only history. A second account
       cannot read it (RLS on `reasonings`).
+- [ ] Semantic index sync + RLS: build the index in Browser A → embeddings
+      appear in Browser B (same email). A second account's `match_embeddings`
+      never returns the first account's vectors (own-row RLS on `embeddings`).
+- [ ] (If a real embedding provider is configured) provider calls contain only
+      the required text; the embedding key is server-only and never in the
+      client bundle; no source text is logged.
 
 ## C. Real Anthropic (CREDENTIAL-DEPENDENT, pending)
 

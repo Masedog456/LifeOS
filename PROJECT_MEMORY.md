@@ -23,6 +23,45 @@ pending Product Owner approval).
 
 ## 2. Current Sprint Status
 
+- Date: 2026-07-13
+- **LIFEOS-015 — Semantic retrieval & evidence freshness: implemented.** An
+  OPTIONAL semantic layer that improves recall/candidate-selection without
+  replacing deterministic logic, plus deterministic freshness tracking for
+  saved results. No graph UI, no agents; Constitution never auto-changes;
+  deterministic retrieval never weakened. Provider seam (`lib/embeddings/`):
+  provider-independent `EmbeddingProvider` interface; a built-in **local
+  lexical embedder** (synonym-aware bag-of-concepts, 128-d, deterministic,
+  offline, zero-config) powers live in-browser hybrid ranking; a gated HTTP
+  provider (`/api/embed`, `EMBEDDING_API_KEY`+`EMBEDDING_PROVIDER_URL`+
+  `EMBEDDING_MODEL`, server-only, text never logged) produces the durable
+  index, with a local fallback so indexing works unconfigured. Hybrid ranking
+  (`search.ts`): additive semantic term strictly BELOW exact(×6)/concept(×4)
+  authority (exact/concept always outrank weak semantic; semantic-only capped
+  ~×2.5), new "Semantically related" label, raw scores never shown; activates
+  only after the user builds an index. Index (`lib/embeddings/{records,index}`):
+  ten eligible record kinds with content hashes (no keys/auth, no duplicate
+  originalText); user-triggered, batched, idempotent (`runIndex` skips
+  unchanged hashes, caps per op, retries); durable in `embeddings` pgvector
+  table (own-row RLS, `match_embeddings` RPC, migration `0010`). Reasoning
+  (`passes.ts`): semantic WIDENS candidate pools (contradiction pairing over
+  neighbours) but findings require the deterministic gate — semantic alone
+  never labels a contradiction, all findings keep provenance. Freshness
+  (`lib/freshness/fingerprint.ts`): every saved comparison/inquiry/thread-
+  synthesis/weekly-review/reasoning stores a deterministic fingerprint (dep
+  record ids + content hashes + pipeline version + embedding model);
+  `freshnessStatus` → current/potentially_stale/stale/unknown with reasons
+  ("2 beliefs were revised", "new evidence was added", "pipeline changed").
+  Rerun (`components/FreshnessBadge.tsx`): explicit only, preserves prior
+  result in append-only history, never overwrites user conclusions, shows
+  approximate AI/embedding calls; comparison gained a rerun; inquiry/thread/
+  reasoning/weekly reuse existing flows. New `/api/embed` route + Library
+  "Semantic index" panel (visible workload, incremental indexing). Verified:
+  **19/19 semantic/freshness checks** + **19/19 reasoning + 23/23 formation +
+  21/21 megathread + 22/22 dialectic + 15/15 comparison + 9/9 regression +
+  12/12 long-source + 16/16 PDF + 11/11 retrieval**, zero runtime errors;
+  `lint`/`build` green. Supabase `embeddings` sync/RLS + a real embedding
+  provider are code-complete but credential-pending (local-embedder mode fully
+  verified).
 - Date: 2026-07-12
 - **LIFEOS-014 — Reasoning engine: implemented.** Higher-order, deterministic-
   first reasoning across the whole knowledge system (sources, beliefs,
@@ -1102,3 +1141,37 @@ scope or order.
   Supabase persistence of `reasonings` (sync/RLS/cross-device) is code-complete
   but credential-pending. No autonomous agents, graph UI, auto Constitution
   changes, or new AI routes beyond the single `/api/ai`.
+- 2026-07-13 — Implemented **LIFEOS-015 semantic retrieval & evidence
+  freshness** (base: merged LIFEOS-014 on `main`; branch restarted from
+  `origin/main`). New: `lib/embeddings/{types,local,records,index}.ts`
+  (provider seam + local lexical embedder + embeddable-record extraction +
+  batched idempotent indexing), `lib/hash.ts`, `app/api/embed/route.ts`
+  (provider-independent embedding route, local fallback, no text logging),
+  `lib/retrieval/semantic.ts` (query vector + cosine + index gate),
+  `lib/freshness/fingerprint.ts` (deterministic freshness),
+  `components/{FreshnessBadge,SemanticIndexPanel}.tsx`,
+  `supabase/migrations/0010_semantic_retrieval.sql` (pgvector `embeddings`
+  table + own-row RLS + `match_embeddings` RPC). Extended `types/mvp.ts`
+  (`EmbeddingRecord`, `EmbeddableType`, `SavedFingerprint`, `FreshnessStatus`,
+  `StoreState.embeddings`, `fingerprint?` + Comparison `history?`),
+  `lib/retrieval/search.ts` (additive semantic term below exact/concept +
+  "Semantically related" label), `lib/reasoning/passes.ts` (semantic candidate
+  widening for contradiction pairing, gated by deterministic polarity),
+  `lib/comparison/run.ts` (+`rerunComparison`), `lib/dialectic/run.ts`,
+  `lib/reasoning/run.ts` (fingerprints), `lib/mvpStore.ts` (embeddings state +
+  `addEmbeddings`/`updateComparison` + fingerprints on thread/weekly synthesis),
+  `lib/persistence.ts`, `lib/adapters/{localAdapter,supabaseAdapter}.ts`
+  (embeddings load/save/delete + pgvector mappers). Wired semantic (gated on
+  `state.embeddings.length > 0`) into Library search, Home/Constitution/Reader
+  related, and Megathread/comparison evidence selection; added freshness badges
+  + rerun to compare/inquiry/thread/reason/weekly detail pages; Library gained
+  a Semantic index panel. Deterministic retrieval unchanged when no index
+  exists; exact/concept always outrank weak semantic; semantic alone never
+  labels a contradiction; rerun preserves history + conclusions. Verified 19/19
+  semantic/freshness + all prior suites (19/19 reasoning, 23/23 formation,
+  21/21 megathread, 22/22 dialectic, 15/15 comparison, 9/9 regression, 12/12
+  long-source, 16/16 PDF, 11/11 retrieval), zero runtime errors; `lint`=0,
+  `build`=0. Supabase `embeddings` sync/RLS + a real embedding provider are
+  code-complete but credential-pending. No graph UI, autonomous agents, auto
+  Constitution changes, or new AI routes beyond `/api/ai` (+ the non-AI
+  `/api/embed` + `/api/extract` utility routes).

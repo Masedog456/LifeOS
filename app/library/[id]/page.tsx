@@ -50,6 +50,7 @@ export default function ReaderPage() {
     const seed = source.summary || source.title;
     return relatedTo(seed, buildRecords(state), state.feedback, {
       excludeSourceId: id,
+      semantic: state.embeddings.length > 0,
     });
   }, [showRelated, source, id, state]);
 

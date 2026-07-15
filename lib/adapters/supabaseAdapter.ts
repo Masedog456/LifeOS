@@ -17,6 +17,7 @@ import type {
   Belief,
   Capture,
   Comparison,
+  EmbeddingRecord,
   Inquiry,
   Megathread,
   PracticeCandidate,
@@ -51,7 +52,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -68,6 +69,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("practices").select("*").order("created_at", { ascending: false }),
         this.client.from("review_sessions").select("*").order("started_at", { ascending: false }),
         this.client.from("reasonings").select("*").order("created_at", { ascending: false }),
+        this.client.from("embeddings").select("*"),
       ]);
 
     const firstError =
@@ -85,7 +87,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       reflections.error ||
       practices.error ||
       reviews.error ||
-      reasonings.error;
+      reasonings.error ||
+      embeddings.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -114,6 +117,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       practices: (practices.data ?? []).map(rowToPractice),
       reviews: (reviews.data ?? []).map(rowToReview),
       reasonings: (reasonings.data ?? []).map(rowToReasoning),
+      embeddings: (embeddings.data ?? []).map(rowToEmbedding),
     };
   }
 
@@ -170,6 +174,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     }
     if (state.reasonings.length) {
       await this.throwing(this.client.from("reasonings").upsert(state.reasonings.map(reasoningToRow)));
+    }
+    if (state.embeddings.length) {
+      await this.throwing(this.client.from("embeddings").upsert(state.embeddings.map(embeddingToRow), { onConflict: "user_id,record_id" }));
     }
     this.lastState = "synced";
     this.lastError = undefined;
@@ -233,6 +240,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("embeddings").delete().eq("user_id", uid));
     await this.throwing(this.client.from("reasonings").delete().eq("user_id", uid));
     await this.throwing(this.client.from("review_sessions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("practices").delete().eq("user_id", uid));
@@ -662,6 +670,40 @@ function rowToReasoning(r: any): ReasoningQuery {
     judgments: (r.judgments ?? []) as ReasoningQuery["judgments"],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+  };
+}
+
+function embeddingToRow(e: EmbeddingRecord) {
+  return {
+    record_id: e.recordId,
+    type: e.type,
+    source_id: e.sourceId ?? null,
+    content_hash: e.contentHash,
+    provider: e.provider,
+    model: e.model,
+    dimensions: e.dimensions,
+    // pgvector accepts the array literal string form `[a,b,c]`.
+    embedding: `[${e.vector.join(",")}]`,
+    generated_at: e.generatedAt,
+  };
+}
+function rowToEmbedding(r: any): EmbeddingRecord {
+  let vector: number[] = [];
+  const raw = r.embedding;
+  if (Array.isArray(raw)) vector = raw as number[];
+  else if (typeof raw === "string") {
+    try { vector = JSON.parse(raw) as number[]; } catch { vector = []; }
+  }
+  return {
+    recordId: r.record_id,
+    type: r.type,
+    sourceId: r.source_id ?? undefined,
+    contentHash: r.content_hash,
+    provider: r.provider ?? "local",
+    model: r.model ?? "lexical-v1",
+    dimensions: r.dimensions ?? vector.length,
+    generatedAt: r.generated_at,
+    vector,
   };
 }
 

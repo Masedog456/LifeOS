@@ -9,6 +9,7 @@ import { buildRecords } from "@/lib/retrieval/records";
 import { search } from "@/lib/retrieval/search";
 import AddSource from "@/components/AddSource";
 import RetrievalResults from "@/components/RetrievalResults";
+import SemanticIndexPanel from "@/components/SemanticIndexPanel";
 
 const GROUP_LABELS: Partial<Record<RecordType, string>> = {
   source: "Sources",
@@ -37,8 +38,8 @@ export default function LibraryPage() {
   const records = useMemo(() => buildRecords(state), [state]);
   const deepQuery = query.trim().length >= 2;
   const results = useMemo(
-    () => (deepQuery ? search(query, records, state.feedback, { limit: 30, maxPerSource: 3 }) : []),
-    [deepQuery, query, records, state.feedback],
+    () => (deepQuery ? search(query, records, state.feedback, { limit: 30, maxPerSource: 3, semantic: state.embeddings.length > 0 }) : []),
+    [deepQuery, query, records, state.feedback, state.embeddings.length],
   );
   const grouped = useMemo(() => {
     const m = new Map<RecordType, typeof results>();
@@ -84,6 +85,8 @@ export default function LibraryPage() {
           <AddSource />
         </div>
       )}
+
+      {state.sources.length > 0 && <SemanticIndexPanel state={state} />}
 
       {state.sources.length > 0 && (
         <div className="mb-6 flex flex-col gap-3">

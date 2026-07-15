@@ -107,7 +107,7 @@ export function candidateMembers(state: StoreState, thread: Megathread): Candida
   // 1) Retrieval relatedness to the seed text.
   const seed = threadSeedText(state, thread);
   if (seed.trim().length >= 2) {
-    const ranked = search(seed, buildRecords(state), state.feedback, { limit: 40, maxPerSource: 2 });
+    const ranked = search(seed, buildRecords(state), state.feedback, { limit: 40, maxPerSource: 2, semantic: state.embeddings.length > 0 });
     for (const r of ranked) {
       const rec = r.record;
       if (rec.sourceId && (rec.type === "source" || rec.type === "summary")) {

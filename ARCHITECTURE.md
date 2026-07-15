@@ -352,6 +352,52 @@ autonomous agents, no graph UI, and it never changes the Constitution.
   ("find tensions"), Reader source ("trace influence"), Megathread ("reason
   across this thread"), Nav.
 
+## Semantic retrieval & evidence freshness (LIFEOS-015 — implemented)
+
+An **optional** semantic layer improves recall and candidate selection
+without replacing deterministic logic, plus deterministic freshness tracking
+for every saved result. No graph UI, no autonomous agents, and the
+Constitution is never auto-changed.
+
+- **Provider seam** (`lib/embeddings/`). A provider-independent
+  `EmbeddingProvider` interface (name/model/dimensions/health/embed/
+  embedBatch/cost). A built-in **local lexical embedder** (`local.ts`:
+  synonym-aware bag-of-concepts, 128-d, deterministic, offline, zero-config)
+  powers **live in-browser hybrid ranking**. A configured HTTP provider
+  (`/api/embed`, `EMBEDDING_API_KEY` + `EMBEDDING_PROVIDER_URL` +
+  `EMBEDDING_MODEL`, server-only) produces the durable index; the route falls
+  back to local vectors so indexing works with no configuration. Text is
+  never logged; credentials never reach the browser.
+- **Hybrid ranking** (`lib/retrieval/search.ts`). Adds an **additive**
+  semantic term strictly **below** exact (×6) and concept (×4) authority — an
+  exact or concept match always outranks a weak semantic match; a
+  semantic-only candidate is capped (~×2.5). New reason label "Semantically
+  related"; raw vector scores are never shown. Semantic activates only once
+  the user has built an index (`state.embeddings.length > 0`) — deterministic
+  retrieval is unchanged otherwise.
+- **Index** (`lib/embeddings/{records,index}.ts`). `embeddableItems` projects
+  the ten eligible record kinds with content hashes (never keys/auth, never
+  duplicate `originalText` when chunks exist). `runIndex` is user-triggered,
+  batched, and idempotent — only new/changed hashes are (re-)embedded, capped
+  per operation, with retries. Stored durably (`embeddings` table, pgvector,
+  own-row RLS, `match_embeddings` RPC — migration `0010_semantic_retrieval.sql`).
+- **Reasoning use** (`lib/reasoning/passes.ts`). Semantic **widens candidate
+  pools** (e.g. contradiction pairing over semantic neighbours) but a finding
+  is only recorded when the deterministic gate holds (opposing polarity) — so
+  **semantic similarity alone never labels two beliefs contradictory**, and
+  every finding still cites provenance.
+- **Freshness** (`lib/freshness/fingerprint.ts`). Every saved comparison /
+  inquiry / thread synthesis / weekly review / reasoning stores a
+  deterministic fingerprint (dependency record ids + content hashes + pipeline
+  version + embedding model). `freshnessStatus` recomputes and diffs →
+  `current` / `potentially_stale` / `stale` / `unknown`, with reasons ("2
+  beliefs were revised", "new evidence was added", "the processing pipeline
+  changed"). Pure and offline — no AI, no embeddings required.
+- **Rerun** (`components/FreshnessBadge.tsx`). Explicit, never automatic:
+  preserves the prior result in append-only history, generates a new result
+  from current evidence, and **never overwrites the user's conclusions**. The
+  approximate AI (and embedding) call count is shown before running.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

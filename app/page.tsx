@@ -31,7 +31,7 @@ export default function Home() {
   // Retrieval runs AFTER the capture is already saved, and never blocks it.
   function resurface(raw: string) {
     try {
-      const related = relatedTo(raw, buildRecords(state), state.feedback, {}).slice(0, 3);
+      const related = relatedTo(raw, buildRecords(state), state.feedback, { semantic: state.embeddings.length > 0 }).slice(0, 3);
       setResurfaced2(related);
       setShowMore(false);
     } catch {
