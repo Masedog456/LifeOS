@@ -17,6 +17,7 @@ import type {
 import { runComparison, verifyComparison } from "@/lib/aiClient";
 import { buildEvidence, coverageSummary } from "@/lib/comparison/evidence";
 import { validateResult } from "@/lib/comparison/schema";
+import { makeFingerprint } from "@/lib/freshness/fingerprint";
 
 export const MAX_SOURCES = 5;
 /** A comparison of this many source inputs runs the extra verification pass. */
@@ -122,6 +123,8 @@ export async function runComparisonFlow(
   }
 
   const model = source === "ai" ? (process.env.NEXT_PUBLIC_ANTHROPIC_MODEL ?? "anthropic") : "mock";
+  const sourceIds = [...new Set(inputs.map((i) => i.sourceId).filter((x): x is string => Boolean(x)))];
+  const beliefIds = [...new Set(inputs.map((i) => i.beliefId).filter((x): x is string => Boolean(x)))];
 
   return {
     id:
@@ -131,8 +134,8 @@ export async function runComparisonFlow(
     title,
     question: q,
     inputs,
-    sourceIds: [...new Set(inputs.map((i) => i.sourceId).filter((x): x is string => Boolean(x)))],
-    beliefIds: [...new Set(inputs.map((i) => i.beliefId).filter((x): x is string => Boolean(x)))],
+    sourceIds,
+    beliefIds,
     evidence: flat,
     result,
     aiModel: model,
@@ -142,5 +145,21 @@ export async function runComparisonFlow(
     verified,
     createdAt: new Date().toISOString(),
     judgments: [],
+    fingerprint: makeFingerprint(state, [...sourceIds, ...beliefIds]),
+  };
+}
+
+/**
+ * Re-run a saved comparison from CURRENT evidence, preserving the prior result
+ * in an append-only history entry. Never overwrites the user's judgments.
+ */
+export async function rerunComparison(state: StoreState, prior: Comparison): Promise<Comparison> {
+  const fresh = await runComparisonFlow(state, prior.inputs, prior.question);
+  return {
+    ...fresh,
+    id: prior.id,
+    createdAt: prior.createdAt,
+    judgments: prior.judgments,
+    history: [...(prior.history ?? []), { at: prior.createdAt, result: prior.result, source: prior.source }],
   };
 }

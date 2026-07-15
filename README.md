@@ -23,6 +23,42 @@ npm run build   # production build
 npm run lint    # lint check
 ```
 
+## Semantic retrieval (optional)
+
+LifeOS has an **optional** semantic layer (LIFEOS-015) that finds
+conceptually related material even when the wording differs. It is off until
+you build an index, and **deterministic search always works without it** —
+you never have to configure anything.
+
+- **Zero-config (default):** a built-in local lexical embedder runs entirely
+  on-device — no keys, no network, fully private. Open **Library → Semantic
+  index → Update index** to build it. Indexing is incremental (only new or
+  changed records are embedded) and user-triggered; nothing runs in the
+  background.
+- **Optional higher-quality provider:** to use a real embedding model, set
+  these **server-only** variables (never prefix them with `NEXT_PUBLIC_`):
+
+  ```bash
+  EMBEDDING_PROVIDER_URL=https://api.openai.com/v1/embeddings  # any OpenAI-compatible /embeddings endpoint
+  EMBEDDING_API_KEY=<your embedding provider key>
+  EMBEDDING_MODEL=<embedding model id>
+  EMBEDDING_DIMENSIONS=1536
+  ```
+
+  The provider is called only from the server route `/api/embed`; the key
+  never reaches the browser and source text is never logged. If these are
+  unset, the local embedder is used. LifeOS does **not** assume Anthropic
+  provides embeddings — the provider is independent of `ANTHROPIC_API_KEY`.
+- **Durable index (optional):** when signed in with Supabase configured, run
+  `supabase/migrations/0010_semantic_retrieval.sql` to store embeddings in a
+  pgvector table (own-row RLS — no cross-user results). See
+  [PERSISTENCE_QA.md](./PERSISTENCE_QA.md).
+
+Saved comparisons, inquiries, Megathreads, weekly reviews, and reasoning
+sessions also show an **evidence-freshness** badge and a one-click re-run when
+their underlying records change; re-running preserves prior history and never
+overwrites your own conclusions.
+
 ## Project memory & foundation docs
 
 - [PROJECT_MEMORY.md](./PROJECT_MEMORY.md) — current project state, what's

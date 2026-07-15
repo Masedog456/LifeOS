@@ -15,7 +15,9 @@ import {
   useStore,
 } from "@/lib/mvpStore";
 import { rerunReasoning } from "@/lib/reasoning/run";
+import { reasoningDeps } from "@/lib/freshness/fingerprint";
 import ReasoningResult from "@/components/ReasoningResult";
+import FreshnessBadge from "@/components/FreshnessBadge";
 
 const STATUSES: ReasoningStatus[] = ["open", "provisional", "resolved"];
 
@@ -64,6 +66,19 @@ export default function ReasoningDetailPage() {
         <button type="button" onClick={rerun} disabled={rerunning} className="text-sm text-zinc-500 underline-offset-4 hover:underline disabled:opacity-40">
           {rerunning ? "Re-running…" : "Re-run (keeps history) →"}
         </button>
+      </div>
+
+      <div className="mt-4">
+        <FreshnessBadge
+          state={state}
+          fingerprint={query.fingerprint}
+          currentIds={reasoningDeps(query)}
+          approxAiCalls={query.verified ? 2 : 1}
+          onRerun={async () => {
+            const next = await rerunReasoning(getStoreSnapshot(), query);
+            updateReasoning(next);
+          }}
+        />
       </div>
 
       <div className="mt-4">

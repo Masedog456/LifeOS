@@ -54,7 +54,7 @@ function relevanceOrder(
 ): (a: string, b: string) => number {
   if (!question.trim()) return () => 0;
   const records = buildRecords(state).filter((r) => r.sourceId === sourceId);
-  const ranked = search(question, records, state.feedback, { limit: 50, maxPerSource: 50 });
+  const ranked = search(question, records, state.feedback, { limit: 50, maxPerSource: 50, semantic: state.embeddings.length > 0 });
   const rank = new Map<string, number>();
   ranked.forEach((r, i) => rank.set(r.record.text, i));
   return (a, b) => (rank.get(a) ?? 999) - (rank.get(b) ?? 999);

@@ -18,6 +18,7 @@ import type {
 import { runDialectic, verifyDialectic } from "@/lib/aiClient";
 import { buildInquiryEvidence, inquiryCoverage } from "@/lib/dialectic/evidence";
 import { validateDialectic } from "@/lib/dialectic/schema";
+import { makeFingerprint } from "@/lib/freshness/fingerprint";
 
 export const MAX_SOURCES = 5;
 /** An inquiry with this many source inputs runs the extra verification pass. */
@@ -119,13 +120,17 @@ export async function runInquiryFlow(
   const now = new Date().toISOString();
   const model = source === "ai" ? (process.env.NEXT_PUBLIC_ANTHROPIC_MODEL ?? "anthropic") : "mock";
 
+  const sourceIds = [...new Set(inputs.map((i) => i.sourceId).filter((x): x is string => Boolean(x)))];
+  const beliefIds = [...new Set(inputs.map((i) => i.beliefId).filter((x): x is string => Boolean(x)))];
+  const comparisonIds = [...new Set(inputs.map((i) => i.comparisonId).filter((x): x is string => Boolean(x)))];
+
   return {
     id: newId(),
     question: question.trim(),
     inputs,
-    sourceIds: [...new Set(inputs.map((i) => i.sourceId).filter((x): x is string => Boolean(x)))],
-    beliefIds: [...new Set(inputs.map((i) => i.beliefId).filter((x): x is string => Boolean(x)))],
-    comparisonIds: [...new Set(inputs.map((i) => i.comparisonId).filter((x): x is string => Boolean(x)))],
+    sourceIds,
+    beliefIds,
+    comparisonIds,
     evidence,
     result,
     history: [],
@@ -138,6 +143,7 @@ export async function runInquiryFlow(
     judgments: [],
     createdAt: now,
     updatedAt: now,
+    fingerprint: makeFingerprint(state, [...sourceIds, ...beliefIds, ...comparisonIds]),
   };
 }
 
@@ -171,13 +177,17 @@ export async function evolveInquiryFlow(
     addedInputs: addedInputs.map((i) => i.label),
   };
 
+  const sourceIds = [...new Set(mergedInputs.map((i) => i.sourceId).filter((x): x is string => Boolean(x)))];
+  const beliefIds = [...new Set(mergedInputs.map((i) => i.beliefId).filter((x): x is string => Boolean(x)))];
+  const comparisonIds = [...new Set(mergedInputs.map((i) => i.comparisonId).filter((x): x is string => Boolean(x)))];
+
   return {
     ...inquiry,
     question: q,
     inputs: mergedInputs,
-    sourceIds: [...new Set(mergedInputs.map((i) => i.sourceId).filter((x): x is string => Boolean(x)))],
-    beliefIds: [...new Set(mergedInputs.map((i) => i.beliefId).filter((x): x is string => Boolean(x)))],
-    comparisonIds: [...new Set(mergedInputs.map((i) => i.comparisonId).filter((x): x is string => Boolean(x)))],
+    sourceIds,
+    beliefIds,
+    comparisonIds,
     evidence,
     result,
     history: [...inquiry.history, historyEntry],
@@ -187,5 +197,6 @@ export async function evolveInquiryFlow(
     partial,
     verified,
     updatedAt: now,
+    fingerprint: makeFingerprint(state, [...sourceIds, ...beliefIds, ...comparisonIds]),
   };
 }

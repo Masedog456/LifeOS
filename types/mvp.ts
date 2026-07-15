@@ -413,6 +413,10 @@ export interface Comparison {
   createdAt: ISO;
   /** Append-only human judgments on the insights. */
   judgments: ComparisonJudgment[];
+  /** Evidence fingerprint for freshness detection (LIFEOS-015). */
+  fingerprint?: SavedFingerprint;
+  /** Append-only prior results from reruns (LIFEOS-015). */
+  history?: { at: ISO; result: ComparisonResultData; source: "ai" | "mock" }[];
 }
 
 // ---------- Dialectical intelligence (LIFEOS-011) ----------
@@ -531,6 +535,8 @@ export interface Inquiry {
   judgments: ComparisonJudgment[];
   createdAt: ISO;
   updatedAt: ISO;
+  /** Evidence fingerprint for freshness detection (LIFEOS-015). */
+  fingerprint?: SavedFingerprint;
 }
 
 // ---------- Megathreads & longitudinal knowledge (LIFEOS-012) ----------
@@ -642,6 +648,8 @@ export interface Megathread {
   revisions: { at: ISO; note: string }[];
   createdAt: ISO;
   updatedAt: ISO;
+  /** Freshness fingerprint of the synthesis's evidence (LIFEOS-015). */
+  fingerprint?: SavedFingerprint;
 }
 
 // ---------- Daily formation & review (LIFEOS-013) ----------
@@ -781,6 +789,8 @@ export interface ReviewSession {
   alignmentSource?: "ai" | "mock";
   startedAt: ISO;
   completedAt?: ISO;
+  /** Freshness fingerprint of the weekly synthesis's evidence (LIFEOS-015). */
+  fingerprint?: SavedFingerprint;
 }
 
 // ---------- Reasoning engine (LIFEOS-014) ----------
@@ -917,6 +927,65 @@ export interface ReasoningQuery {
   judgments: ComparisonJudgment[];
   createdAt: ISO;
   updatedAt: ISO;
+  /** Evidence fingerprint for freshness detection (LIFEOS-015). */
+  fingerprint?: SavedFingerprint;
+}
+
+// ---------- Semantic retrieval & freshness (LIFEOS-015) ----------
+
+/** Record kinds eligible for embedding (Phase 3). */
+export type EmbeddableType =
+  | "chunk"
+  | "summary"
+  | "quote"
+  | "capture"
+  | "belief"
+  | "revision"
+  | "comparison_finding"
+  | "inquiry_finding"
+  | "thread_synthesis"
+  | "reflection";
+
+/**
+ * A stored embedding for one record. The vector powers durable/cross-device
+ * semantic recall; the content hash makes indexing idempotent (skip unchanged).
+ * Never holds keys, auth data, or duplicate full-source text.
+ */
+export interface EmbeddingRecord {
+  /** Stable id of the underlying record (e.g. `belief:<id>`, `quote:<sid>:<i>`). */
+  recordId: string;
+  type: EmbeddableType;
+  sourceId?: string;
+  /** Hash of the exact embedded text — changes ⇒ re-embed. */
+  contentHash: string;
+  provider: string;
+  model: string;
+  dimensions: number;
+  generatedAt: ISO;
+  /** The vector itself (kept compact for the local lexical embedder). */
+  vector: number[];
+}
+
+export type FreshnessStatus = "current" | "potentially_stale" | "stale" | "unknown";
+
+/** One dependency of a saved result, captured for freshness diffing. */
+export interface FingerprintDep {
+  id: string;
+  kind: string;
+  hash: string;
+}
+
+/**
+ * Deterministic fingerprint of the evidence a saved result was built from
+ * (Phase 7). Recomputing and diffing detects when the underlying knowledge
+ * changed. No AI, no embeddings required.
+ */
+export interface SavedFingerprint {
+  pipelineVersion: number;
+  /** Embedding model/version, only when the result used the semantic index. */
+  embeddingModel?: string;
+  deps: FingerprintDep[];
+  at: ISO;
 }
 
 export interface StoreState {
@@ -932,4 +1001,5 @@ export interface StoreState {
   practices: PracticeCandidate[];
   reviews: ReviewSession[];
   reasonings: ReasoningQuery[];
+  embeddings: EmbeddingRecord[];
 }

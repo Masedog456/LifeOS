@@ -17,6 +17,8 @@ import type {
   SupportAudit,
 } from "@/types/mvp";
 import type { ResolvedScope } from "@/lib/reasoning/graph";
+import { cosine, localEmbed } from "@/lib/embeddings/local";
+import { hasSemanticIndex } from "@/lib/retrieval/semantic";
 
 const STOP = new Set([
   "the","and","for","are","but","not","you","that","this","with","from","have","what",
@@ -121,16 +123,22 @@ export function contradictionAudit(state: StoreState, resolved: ResolvedScope): 
       push(`Inquiry “${snippet(i.question, 40)}” holds both affirmative and negative readings.`, "ambiguity", [i.id]);
     }
   }
-  // Belief pairs: shared subject, opposing polarity → possible contradiction.
+  // Belief pairs: opposing polarity → possible contradiction. Candidate pairs
+  // come from token overlap AND (when a semantic index exists) semantic
+  // neighbours — but a tension is ONLY recorded when the polarity differs.
+  // Semantic similarity alone never labels two beliefs contradictory.
   const beliefs = state.beliefs.filter((b) => resolved.beliefIds.has(b.id) && b.status !== "rejected");
+  const semantic = hasSemanticIndex(state);
+  const vecs = semantic ? beliefs.map((b) => localEmbed(b.text)) : [];
   for (let a = 0; a < beliefs.length; a++) {
     for (let b = a + 1; b < beliefs.length; b++) {
-      const ta = tokens(beliefs[a].text), tb = tokens(beliefs[b].text);
-      if (overlap(ta, tb) < 2) continue;
+      const lexical = overlap(tokens(beliefs[a].text), tokens(beliefs[b].text)) >= 2;
+      const semanticNeighbour = semantic && cosine(vecs[a], vecs[b]) >= 0.6;
+      if (!lexical && !semanticNeighbour) continue;
       const na = NEGATION.test(beliefs[a].text), nb = NEGATION.test(beliefs[b].text);
       if (na !== nb) {
         push(
-          `“${snippet(beliefs[a].text, 50)}” and “${snippet(beliefs[b].text, 50)}” share a subject but differ in polarity.`,
+          `“${snippet(beliefs[a].text, 50)}” and “${snippet(beliefs[b].text, 50)}” address a shared topic but differ in polarity.`,
           "logical",
           [beliefs[a].id, beliefs[b].id],
         );

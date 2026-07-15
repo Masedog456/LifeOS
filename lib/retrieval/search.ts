@@ -10,6 +10,9 @@
 
 import type { FeedbackEntry, RecordType, RetrievalRecord } from "@/types/mvp";
 import { normKey } from "@/lib/dedup";
+import { localEmbed, cosine } from "@/lib/embeddings/local";
+import type { EmbeddingVector } from "@/lib/embeddings/types";
+import { SEMANTIC_THRESHOLD } from "@/lib/retrieval/semantic";
 
 const STOPWORDS = new Set([
   "the", "and", "for", "are", "but", "not", "you", "all", "any", "can", "her", "was", "one",
@@ -37,7 +40,8 @@ export type Reason =
   | "Exact match"
   | "Shared concept"
   | "Title match"
-  | "Related wording";
+  | "Related wording"
+  | "Semantically related";
 
 export interface RankedResult {
   record: RetrievalRecord;
@@ -52,6 +56,8 @@ export interface SearchOptions {
   types?: RecordType[];
   /** Exclude specific record ids (e.g. the record you're searching *from*). */
   excludeIds?: Set<string>;
+  /** Enable the additive semantic term (LIFEOS-015). Deterministic stays authoritative. */
+  semantic?: boolean;
 }
 
 function latestFeedback(feedback: FeedbackEntry[]): Map<string, FeedbackEntry> {
@@ -68,6 +74,7 @@ function scoreRecord(
   qTokens: string[],
   qSet: Set<string>,
   record: RetrievalRecord,
+  qVec: EmbeddingVector | null,
 ): { score: number; reason: Reason } | null {
   const textNorm = normKey(record.text);
   const rTokens = tokenize(record.text);
@@ -82,20 +89,34 @@ function scoreRecord(
     : 0;
   const titleMatch = titleNorm && qNorm.length >= 3 && titleNorm.includes(qNorm) ? 1 : 0;
 
-  if (!exact && overlap === 0 && conceptOverlap === 0 && !titleMatch) return null;
+  // Semantic similarity (local embedder) — additive only, never authoritative.
+  const sim = qVec ? cosine(localEmbed(record.text), qVec) : 0;
 
+  const recency = recencyScore(record.updatedAt ?? record.createdAt) * 0.5;
   const provenance = record.page != null ? 0.3 : 0;
   const statusBoost =
     record.status === "accepted" ? 0.4 : record.status === "questioned" ? 0.3 : 0;
+
+  const hasDeterministic = exact || overlap > 0 || conceptOverlap > 0 || titleMatch;
+
+  if (!hasDeterministic) {
+    // Semantic-only candidate: capped well BELOW an exact (6) or concept (4)
+    // match, so exact/concept always outrank a weak semantic match.
+    if (qVec && sim >= SEMANTIC_THRESHOLD) {
+      return { score: sim * 2.5 + recency + provenance, reason: "Semantically related" };
+    }
+    return null;
+  }
 
   const score =
     exact * 6 +
     conceptOverlap * 4 +
     overlap * 3 +
     titleMatch * 2 +
+    sim * 1.5 + // gentle booster; below every deterministic weight
     provenance +
     statusBoost +
-    recencyScore(record.updatedAt ?? record.createdAt) * 0.5;
+    recency;
 
   const reason: Reason = exact
     ? "Exact match"
@@ -106,7 +127,7 @@ function scoreRecord(
         : "Related wording";
 
   // Guard against pure single-weak-token noise: require a real signal.
-  if (!exact && !titleMatch && overlap < 0.34 && conceptOverlap === 0 && qTokens.length > 2) {
+  if (!exact && !titleMatch && overlap < 0.34 && conceptOverlap === 0 && qTokens.length > 2 && sim < SEMANTIC_THRESHOLD) {
     return null;
   }
   void qSet;
@@ -123,6 +144,7 @@ export function search(
   const qTokens = tokenize(query);
   if (qNorm.length < 2 && qTokens.length === 0) return [];
   const qSet = new Set(qTokens);
+  const qVec = opts.semantic ? localEmbed(query) : null;
 
   const fb = latestFeedback(feedback);
   const now = new Date().toISOString();
@@ -139,7 +161,7 @@ export function search(
     if (f && (f.verdict === "not_relevant" || f.verdict === "dismissed")) continue;
     if (f && f.verdict === "snoozed" && f.snoozeUntil && f.snoozeUntil > now) continue;
 
-    const s = scoreRecord(qNorm, qTokens, qSet, record);
+    const s = scoreRecord(qNorm, qTokens, qSet, record, qVec);
     if (!s) continue;
     const boost = f && f.verdict === "relevant" ? 2 : 0;
     scored.push({ record, score: s.score + boost, reason: s.reason });

@@ -19,6 +19,7 @@ import type {
 import { reasoningSynthesis, verifyReasoning } from "@/lib/aiClient";
 import { buildReasoningGraph, MAX_SCOPE_SOURCES } from "@/lib/reasoning/graph";
 import { validateReasoningAI } from "@/lib/reasoning/schema";
+import { makeFingerprint } from "@/lib/freshness/fingerprint";
 import {
   assumptionAudit,
   beliefImpact,
@@ -214,6 +215,7 @@ export async function runReasoning(
     judgments: [],
     createdAt: now,
     updatedAt: now,
+    fingerprint: makeFingerprint(state, evidence.map((e) => e.id)),
   };
 }
 
@@ -239,5 +241,6 @@ export async function rerunReasoning(
     partial,
     verified,
     updatedAt: now,
+    fingerprint: makeFingerprint(state, evidence.map((e) => e.id)),
   };
 }

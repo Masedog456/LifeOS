@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { comparisonById, useStore } from "@/lib/mvpStore";
+import { comparisonById, getStoreSnapshot, updateComparison, useStore } from "@/lib/mvpStore";
+import { rerunComparison } from "@/lib/comparison/run";
+import { comparisonDeps } from "@/lib/freshness/fingerprint";
 import ComparisonResult from "@/components/ComparisonResult";
+import FreshnessBadge from "@/components/FreshnessBadge";
 
 export default function ComparisonDetailPage() {
   const params = useParams<{ id: string }>();
@@ -43,8 +46,25 @@ export default function ComparisonDetailPage() {
         </div>
       </div>
       <div className="mt-4">
+        <FreshnessBadge
+          state={state}
+          fingerprint={comparison.fingerprint}
+          currentIds={comparisonDeps(comparison)}
+          approxAiCalls={comparison.sourceIds.length >= 4 ? 2 : 1}
+          onRerun={async () => {
+            const next = await rerunComparison(getStoreSnapshot(), comparison);
+            updateComparison(next);
+          }}
+        />
+      </div>
+      <div className="mt-4">
         <ComparisonResult comparison={comparison} />
       </div>
+      {comparison.history && comparison.history.length > 0 && (
+        <p className="mt-6 text-xs text-zinc-400">
+          {comparison.history.length} prior result{comparison.history.length === 1 ? "" : "s"} preserved in history.
+        </p>
+      )}
     </main>
   );
 }

@@ -20,8 +20,10 @@ import {
 import { buildTimeline } from "@/lib/megathread/timeline";
 import { candidateMembers, resolveMember } from "@/lib/megathread/membership";
 import { estimateThreadSynthesis, runThreadSynthesis } from "@/lib/megathread/run";
+import { threadDeps } from "@/lib/freshness/fingerprint";
 import ThreadTimeline from "@/components/ThreadTimeline";
 import ThreadSynthesis from "@/components/ThreadSynthesis";
+import FreshnessBadge from "@/components/FreshnessBadge";
 
 const STATUSES: MegathreadStatus[] = ["active", "dormant", "archived"];
 const MEMBER_GROUPS: { type: ThreadMemberType; label: string }[] = [
@@ -130,6 +132,17 @@ export default function ThreadDetailPage() {
           </button>
         </div>
         {est?.partial && <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">⚠︎ {est.coverageNote}</p>}
+        {thread.synthesis && (
+          <div className="mb-3">
+            <FreshnessBadge
+              state={state}
+              fingerprint={thread.fingerprint}
+              currentIds={threadDeps(thread)}
+              approxAiCalls={est?.calls ?? 1}
+              onRerun={regenerate}
+            />
+          </div>
+        )}
         {thread.synthesis ? (
           <>
             <ThreadSynthesis thread={thread} />

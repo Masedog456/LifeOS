@@ -43,7 +43,7 @@ function BeliefRow({ belief }: { belief: Belief }) {
   // only surfaces what might bear on this belief.
   const related = useMemo(() => {
     if (!open) return [];
-    return relatedTo(belief.text, buildRecords(state), state.feedback, {}).filter(
+    return relatedTo(belief.text, buildRecords(state), state.feedback, { semantic: state.embeddings.length > 0 }).filter(
       (r) => r.record.beliefId !== belief.id,
     );
   }, [open, belief.text, belief.id, state]);

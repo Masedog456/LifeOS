@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { AlignmentData, EvidenceItem, WeeklySynthesisData } from "@/types/mvp";
 import {
   getStoreSnapshot,
+  reviewById,
   setReviewAlignment,
   setReviewSynthesis,
   startReview,
@@ -12,6 +13,8 @@ import {
 } from "@/lib/mvpStore";
 import { buildWeeklyStats, estimateWeekly, runWeeklySynthesis, weeklyEvidence } from "@/lib/formation/weekly";
 import { estimateAlignment, runAlignmentReflection, alignmentEvidence } from "@/lib/formation/alignment";
+import { weeklyDeps } from "@/lib/freshness/fingerprint";
+import FreshnessBadge from "@/components/FreshnessBadge";
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
@@ -132,6 +135,18 @@ export default function WeeklyReviewPage() {
         </div>
         {synthesis ? (
           <div className="flex flex-col gap-3">
+            {(() => {
+              const session = reviewId ? reviewById(state, reviewId) : undefined;
+              return session?.fingerprint ? (
+                <FreshnessBadge
+                  state={state}
+                  fingerprint={session.fingerprint}
+                  currentIds={weeklyDeps(session)}
+                  approxAiCalls={1}
+                  onRerun={genWeekly}
+                />
+              ) : null;
+            })()}
             <p className="text-sm leading-relaxed text-zinc-800 dark:text-zinc-200">{synthesis.narrative}</p>
             {synthesis.highlights.length > 0 && <Cited claims={synthesis.highlights} evidence={weeklyEv} />}
             {synthesis.flagged && synthesis.flagged.length > 0 && (
