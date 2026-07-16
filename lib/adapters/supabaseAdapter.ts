@@ -17,6 +17,7 @@ import type {
   Belief,
   Capture,
   Comparison,
+  Decision,
   EmbeddingRecord,
   Inquiry,
   Megathread,
@@ -52,7 +53,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -70,6 +71,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("review_sessions").select("*").order("started_at", { ascending: false }),
         this.client.from("reasonings").select("*").order("created_at", { ascending: false }),
         this.client.from("embeddings").select("*"),
+        this.client.from("decisions").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -88,7 +90,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       practices.error ||
       reviews.error ||
       reasonings.error ||
-      embeddings.error;
+      embeddings.error ||
+      decisions.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -118,6 +121,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       reviews: (reviews.data ?? []).map(rowToReview),
       reasonings: (reasonings.data ?? []).map(rowToReasoning),
       embeddings: (embeddings.data ?? []).map(rowToEmbedding),
+      decisions: (decisions.data ?? []).map(rowToDecision),
     };
   }
 
@@ -177,6 +181,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     }
     if (state.embeddings.length) {
       await this.throwing(this.client.from("embeddings").upsert(state.embeddings.map(embeddingToRow), { onConflict: "user_id,record_id" }));
+    }
+    if (state.decisions.length) {
+      await this.throwing(this.client.from("decisions").upsert(state.decisions.map(decisionToRow)));
     }
     this.lastState = "synced";
     this.lastError = undefined;
@@ -240,6 +247,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("decisions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("embeddings").delete().eq("user_id", uid));
     await this.throwing(this.client.from("reasonings").delete().eq("user_id", uid));
     await this.throwing(this.client.from("review_sessions").delete().eq("user_id", uid));
@@ -704,6 +712,75 @@ function rowToEmbedding(r: any): EmbeddingRecord {
     dimensions: r.dimensions ?? vector.length,
     generatedAt: r.generated_at,
     vector,
+  };
+}
+
+function decisionToRow(d: Decision) {
+  return {
+    id: d.id,
+    title: d.title,
+    question: d.question,
+    status: d.status,
+    options: d.options,
+    criteria: d.criteria,
+    ratings: d.ratings,
+    constraints: d.constraints,
+    assumptions: d.assumptions,
+    seed_refs: d.seedRefs,
+    evidence: d.evidence,
+    analysis: d.analysis ?? null,
+    analysis_source: d.analysisSource ?? null,
+    history: d.history,
+    provisional_choice: d.provisionalChoice ?? null,
+    final_choice: d.finalChoice ?? null,
+    rationale: d.rationale ?? null,
+    user_confidence: d.userConfidence ?? null,
+    judgments: d.judgments,
+    revisions: d.revisions,
+    outcome_reviews: d.outcomeReviews,
+    fingerprint: d.fingerprint ?? null,
+    sensitive: d.sensitive ?? null,
+    ai_model: d.aiModel,
+    source: d.source,
+    coverage: d.coverage,
+    partial: d.partial,
+    verified: d.verified,
+    created_at: d.createdAt,
+    updated_at: d.updatedAt,
+  };
+}
+function rowToDecision(r: any): Decision {
+  return {
+    id: r.id,
+    title: r.title ?? "",
+    question: r.question ?? "",
+    status: (r.status ?? "exploring") as Decision["status"],
+    options: (r.options ?? []) as Decision["options"],
+    criteria: (r.criteria ?? []) as Decision["criteria"],
+    ratings: (r.ratings ?? {}) as Decision["ratings"],
+    constraints: (r.constraints ?? []) as string[],
+    assumptions: (r.assumptions ?? []) as string[],
+    seedRefs: (r.seed_refs ?? []) as string[],
+    evidence: (r.evidence ?? []) as Decision["evidence"],
+    analysis: (r.analysis ?? undefined) as Decision["analysis"],
+    analysisSource: (r.analysis_source ?? undefined) as Decision["analysisSource"],
+    history: (r.history ?? []) as Decision["history"],
+    provisionalChoice: r.provisional_choice ?? undefined,
+    finalChoice: r.final_choice ?? undefined,
+    rationale: r.rationale ?? undefined,
+    userConfidence: (r.user_confidence ?? undefined) as Decision["userConfidence"],
+    judgments: (r.judgments ?? []) as Decision["judgments"],
+    revisions: (r.revisions ?? []) as Decision["revisions"],
+    outcomeReviews: (r.outcome_reviews ?? []) as Decision["outcomeReviews"],
+    fingerprint: (r.fingerprint ?? undefined) as Decision["fingerprint"],
+    sensitive: r.sensitive ?? undefined,
+    aiModel: r.ai_model ?? "mock",
+    source: (r.source ?? "mock") as Decision["source"],
+    coverage: r.coverage ?? null,
+    partial: Boolean(r.partial),
+    verified: Boolean(r.verified),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
 }
 

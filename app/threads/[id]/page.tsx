@@ -87,12 +87,20 @@ export default function ThreadDetailPage() {
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
       <div className="flex items-center justify-between gap-3">
         <Link href="/threads" className="text-sm text-zinc-500 underline-offset-4 hover:underline">← Megathreads</Link>
-        <Link
-          href={`/reason?mode=unresolved_synthesis&thread=${thread.id}&q=${encodeURIComponent(`What is unresolved across ${thread.title}?`)}`}
-          className="text-sm text-zinc-500 underline-offset-4 hover:underline"
-        >
-          Reason across this thread →
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            href={`/reason?mode=unresolved_synthesis&thread=${thread.id}&q=${encodeURIComponent(`What is unresolved across ${thread.title}?`)}`}
+            className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+          >
+            Reason across this thread →
+          </Link>
+          <Link
+            href={`/decisions?thread=${thread.id}&title=${encodeURIComponent(thread.title)}`}
+            className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+          >
+            Use in a decision →
+          </Link>
+        </div>
       </div>
 
       {/* Title / description */}

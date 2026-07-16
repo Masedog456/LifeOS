@@ -42,6 +42,13 @@ import type {
   ReasoningQuery,
   ReasoningStatus,
   EmbeddingRecord,
+  Decision,
+  DecisionAnalysisResult,
+  DecisionCriterion,
+  DecisionOption,
+  DecisionStatus,
+  OutcomeReview,
+  UserConfidence,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
@@ -63,6 +70,7 @@ const EMPTY_STATE: StoreState = {
   reviews: [],
   reasonings: [],
   embeddings: [],
+  decisions: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -166,6 +174,20 @@ export function hydrate() {
           judgments: asArray<ReasoningQuery["judgments"][number]>(q?.judgments),
         })),
         embeddings: asArray<EmbeddingRecord>(parsed.embeddings),
+        decisions: asArray<Decision>(parsed.decisions).map((d) => ({
+          ...d,
+          options: asArray<DecisionOption>(d?.options),
+          criteria: asArray<DecisionCriterion>(d?.criteria),
+          ratings: d?.ratings && typeof d.ratings === "object" ? d.ratings : {},
+          constraints: asArray<string>(d?.constraints),
+          assumptions: asArray<string>(d?.assumptions),
+          seedRefs: asArray<string>(d?.seedRefs),
+          evidence: asArray<Decision["evidence"][number]>(d?.evidence),
+          history: asArray<Decision["history"][number]>(d?.history),
+          judgments: asArray<Decision["judgments"][number]>(d?.judgments),
+          revisions: asArray<Decision["revisions"][number]>(d?.revisions),
+          outcomeReviews: asArray<OutcomeReview>(d?.outcomeReviews),
+        })),
       };
       emit();
     }
@@ -179,7 +201,7 @@ export function resetStore() {
   clearState();
   setState({
     captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
-    comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [],
+    comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [],
   });
 }
 
@@ -1015,4 +1037,215 @@ export function attachReasoningToThread(reasoningId: string, threadId: string): 
 
 export function reasoningById(s: StoreState, reasoningId: string): ReasoningQuery | undefined {
   return s.reasonings.find((q) => q.id === reasoningId);
+}
+
+// ---------- Decision intelligence actions (LIFEOS-016) ----------
+
+/** Create a decision shell. LifeOS never chooses; the user builds and decides. */
+export function createDecision(fields: {
+  title: string;
+  question: string;
+  seedRefs?: string[];
+  sensitive?: string;
+}): string {
+  const at = now();
+  const decision: Decision = {
+    id: id(),
+    title: fields.title.trim() || "Untitled decision",
+    question: fields.question.trim(),
+    status: "exploring",
+    options: [],
+    criteria: [],
+    ratings: {},
+    constraints: [],
+    assumptions: [],
+    seedRefs: fields.seedRefs ?? [],
+    evidence: [],
+    history: [],
+    judgments: [],
+    revisions: [{ at, note: "Decision created" }],
+    outcomeReviews: [],
+    sensitive: fields.sensitive,
+    aiModel: "mock",
+    source: "mock",
+    coverage: null,
+    partial: false,
+    verified: false,
+    createdAt: at,
+    updatedAt: at,
+  };
+  setState({ ...state, decisions: [decision, ...state.decisions] });
+  return decision.id;
+}
+
+function patchDecision(decisionId: string, patch: (d: Decision) => Decision, logNote?: string): void {
+  const at = now();
+  setState({
+    ...state,
+    decisions: state.decisions.map((d) => {
+      if (d.id !== decisionId) return d;
+      const next = patch(d);
+      return {
+        ...next,
+        updatedAt: at,
+        revisions: logNote ? [...d.revisions, { at, note: logNote }] : next.revisions,
+      };
+    }),
+  });
+}
+
+export function setDecisionFields(
+  decisionId: string,
+  fields: Partial<Pick<Decision, "title" | "question" | "constraints" | "assumptions" | "rationale" | "userConfidence" | "sensitive">>,
+): void {
+  patchDecision(decisionId, (d) => ({ ...d, ...fields }));
+}
+
+export function setDecisionStatus(decisionId: string, status: DecisionStatus): void {
+  patchDecision(decisionId, (d) => ({ ...d, status }), `Marked ${status}`);
+}
+
+export function upsertDecisionOption(decisionId: string, option: DecisionOption): void {
+  patchDecision(decisionId, (d) => {
+    const exists = d.options.some((o) => o.id === option.id);
+    return { ...d, options: exists ? d.options.map((o) => (o.id === option.id ? option : o)) : [...d.options, option] };
+  });
+}
+
+export function removeDecisionOption(decisionId: string, optionId: string): void {
+  patchDecision(decisionId, (d) => {
+    const ratings = { ...d.ratings };
+    delete ratings[optionId];
+    return {
+      ...d,
+      options: d.options.filter((o) => o.id !== optionId),
+      ratings,
+      provisionalChoice: d.provisionalChoice === optionId ? undefined : d.provisionalChoice,
+      finalChoice: d.finalChoice === optionId ? undefined : d.finalChoice,
+    };
+  });
+}
+
+export function upsertDecisionCriterion(decisionId: string, criterion: DecisionCriterion): void {
+  patchDecision(decisionId, (d) => {
+    const exists = d.criteria.some((c) => c.id === criterion.id);
+    return { ...d, criteria: exists ? d.criteria.map((c) => (c.id === criterion.id ? criterion : c)) : [...d.criteria, criterion] };
+  });
+}
+
+export function removeDecisionCriterion(decisionId: string, criterionId: string): void {
+  patchDecision(decisionId, (d) => {
+    const ratings: Decision["ratings"] = {};
+    for (const [oid, row] of Object.entries(d.ratings)) {
+      const next = { ...row };
+      delete next[criterionId];
+      ratings[oid] = next;
+    }
+    return { ...d, criteria: d.criteria.filter((c) => c.id !== criterionId), ratings };
+  });
+}
+
+/** Set one option×criterion rating (−2..+2). The user's judgment, not math truth. */
+export function setDecisionRating(decisionId: string, optionId: string, criterionId: string, rating: number): void {
+  patchDecision(decisionId, (d) => ({
+    ...d,
+    ratings: { ...d.ratings, [optionId]: { ...(d.ratings[optionId] ?? {}), [criterionId]: rating } },
+  }));
+}
+
+/** Store a fresh analysis, preserving the prior one in append-only history. */
+export function setDecisionAnalysis(
+  decisionId: string,
+  analysis: DecisionAnalysisResult,
+  meta: {
+    evidence: Decision["evidence"];
+    source: "ai" | "mock";
+    coverage: Decision["coverage"];
+    partial: boolean;
+    verified: boolean;
+    fingerprint: Decision["fingerprint"];
+    note?: string;
+  },
+): void {
+  const hadAnalysis = Boolean(state.decisions.find((d) => d.id === decisionId)?.analysis);
+  patchDecision(
+    decisionId,
+    (d) => ({
+      ...d,
+      analysis,
+      analysisSource: meta.source,
+      evidence: meta.evidence,
+      source: meta.source,
+      aiModel: meta.source === "ai" ? (process.env.NEXT_PUBLIC_ANTHROPIC_MODEL ?? "anthropic") : "mock",
+      coverage: meta.coverage,
+      partial: meta.partial,
+      verified: meta.verified,
+      fingerprint: meta.fingerprint,
+      history: d.analysis
+        ? [...d.history, { at: d.updatedAt, analysis: d.analysis, source: d.analysisSource ?? d.source, note: meta.note }]
+        : d.history,
+    }),
+    hadAnalysis ? "Analysis regenerated" : "Analysis generated",
+  );
+}
+
+export function setProvisionalChoice(decisionId: string, optionId: string | undefined): void {
+  patchDecision(decisionId, (d) => ({ ...d, provisionalChoice: optionId }), optionId ? "Provisional choice saved" : "Provisional choice cleared");
+}
+
+/** The FINAL choice — only ever via this explicit user action. */
+export function setFinalChoice(
+  decisionId: string,
+  optionId: string,
+  rationale: string,
+  confidence: UserConfidence,
+): void {
+  patchDecision(
+    decisionId,
+    (d) => ({ ...d, finalChoice: optionId, rationale: rationale.trim() || d.rationale, userConfidence: confidence, status: "decided" }),
+    "Final choice made by you",
+  );
+}
+
+/** Reopen a decided/deferred/abandoned decision — nothing is lost. */
+export function reopenDecision(decisionId: string): void {
+  patchDecision(decisionId, (d) => ({ ...d, status: "exploring" }), "Reopened");
+}
+
+/** Append a reflective outcome review (never a score). */
+export function addOutcomeReview(decisionId: string, review: OutcomeReview): void {
+  patchDecision(decisionId, (d) => ({ ...d, outcomeReviews: [...d.outcomeReviews, review] }), "Outcome review added");
+}
+
+export function judgeDecisionInsight(
+  decisionId: string,
+  insightRef: string,
+  decision: ComparisonDecision,
+  note?: string,
+): void {
+  const at = now();
+  patchDecision(decisionId, (d) => ({
+    ...d,
+    judgments: [...d.judgments, { insightRef, decision, at, ...(note ? { note } : {}) }],
+  }));
+}
+
+/** Attach a decision to a Megathread (adds a note + logs a thread revision). */
+export function attachDecisionToThread(decisionId: string, threadId: string): void {
+  const d = state.decisions.find((x) => x.id === decisionId);
+  if (!d) return;
+  const at = now();
+  const note = `Decision attached: ${d.title}`;
+  setState({
+    ...state,
+    megathreads: state.megathreads.map((t) =>
+      t.id === threadId
+        ? { ...t, notes: [t.notes, note].filter(Boolean).join("\n"), revisions: [...t.revisions, { at, note }], updatedAt: at }
+        : t,
+    ),
+  });
+}
+
+export function decisionById(s: StoreState, decisionId: string): Decision | undefined {
+  return s.decisions.find((d) => d.id === decisionId);
 }

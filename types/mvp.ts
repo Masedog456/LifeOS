@@ -988,6 +988,168 @@ export interface SavedFingerprint {
   at: ISO;
 }
 
+// ---------- Decision intelligence (LIFEOS-016) ----------
+
+export type DecisionStatus = "exploring" | "narrowed" | "decided" | "deferred" | "abandoned";
+
+export type OptionKind = "named" | "do_nothing" | "defer" | "hybrid";
+
+export type Reversibility = "easily_reversible" | "costly_to_reverse" | "irreversible" | "unknown";
+
+/** One option under consideration. AI may suggest options; the user approves. */
+export interface DecisionOption {
+  id: string;
+  name: string;
+  kind: OptionKind;
+  description?: string;
+  benefits: string[];
+  costs: string[];
+  risks: string[];
+  reversibility: Reversibility;
+  timeHorizon?: string;
+  evidenceIds: string[];
+  assumptions: string[];
+  openQuestions: string[];
+  /** True while an AI-suggested option awaits user approval. */
+  aiSuggested?: boolean;
+}
+
+/** An editable decision criterion. Weights are optional and NOT precise math. */
+export interface DecisionCriterion {
+  id: string;
+  name: string;
+  /** Optional 1–5 importance. Weighted outputs are one perspective, never "the answer". */
+  weight?: number;
+  note?: string;
+}
+
+/** A grounded analysis finding — must cite evidence ids. */
+export interface DecisionFinding {
+  statement: string;
+  evidenceIds: string[];
+  /** Which option it concerns, when applicable. */
+  option?: string;
+}
+
+export type AlignmentVerdict = "supports" | "conflicts" | "mixed" | "unclear";
+
+/** Where an option supports/conflicts with a stated belief. Cites the belief. */
+export interface ValuesAlignment {
+  option: string;
+  verdict: AlignmentVerdict;
+  statement: string;
+  evidenceIds: string[];
+}
+
+export interface OptionScenarios {
+  option: string;
+  best: string;
+  expected: string;
+  worst: string;
+  wildcard: string;
+}
+
+export interface PreMortemEntry {
+  option: string;
+  plausibleCauses: string[];
+  preventableCauses: string[];
+  earlyWarningSigns: string[];
+}
+
+export interface RegretAnalysis {
+  regretDoing: string[];
+  regretNotDoing: string[];
+  recoverableRegrets: string[];
+}
+
+export interface OptionCase {
+  option: string;
+  statement: string;
+  evidenceIds: string[];
+}
+
+/** Strict structured decision analysis (Phase 7). */
+export interface DecisionAnalysisResult {
+  question: string;
+  options: string[];
+  criteria: string[];
+  tradeoffs: DecisionFinding[];
+  valuesAlignment: ValuesAlignment[];
+  assumptions: DecisionFinding[];
+  missingEvidence: string[];
+  risks: DecisionFinding[];
+  reversibilityNotes: { option: string; assessment: Reversibility; note: string }[];
+  regret: RegretAnalysis;
+  preMortem: PreMortemEntry[];
+  scenarios: OptionScenarios[];
+  strongestFor: OptionCase[];
+  strongestAgainst: OptionCase[];
+  hybridSuggestion?: string;
+  keyUncertainties: string[];
+  whatWouldChange: string[];
+  questionsForHuman: string[];
+  limitations: string[];
+  coverageNote: string;
+  flagged?: string[];
+}
+
+/** A later, reflective look at how a decided option played out. Not a score. */
+export interface OutcomeReview {
+  at: ISO;
+  whatHappened: string;
+  expected?: string;
+  surprises?: string;
+  wrongAssumptions?: string;
+  evidenceThatMattered?: string;
+  doDifferently?: string;
+  stillSound?: "yes" | "partly" | "no";
+  /** Lessons the user may send to the Belief Inbox — never auto-added. */
+  lessons: string[];
+}
+
+export type UserConfidence = "low" | "medium" | "high";
+
+/** A structured decision — LifeOS clarifies tradeoffs; the USER chooses. */
+export interface Decision {
+  id: string;
+  title: string;
+  question: string;
+  status: DecisionStatus;
+  options: DecisionOption[];
+  criteria: DecisionCriterion[];
+  /** User ratings: optionId → criterionId → −2..+2 (unset = unrated). */
+  ratings: Record<string, Record<string, number>>;
+  constraints: string[];
+  assumptions: string[];
+  /** Record ids force-included in the evidence packet (entry-point seeds). */
+  seedRefs: string[];
+  evidence: EvidenceItem[];
+  analysis?: DecisionAnalysisResult;
+  analysisSource?: "ai" | "mock";
+  /** Append-only prior analyses from reruns. */
+  history: { at: ISO; analysis: DecisionAnalysisResult; source: "ai" | "mock"; note?: string }[];
+  provisionalChoice?: string;
+  finalChoice?: string;
+  rationale?: string;
+  /** Confidence STATED BY THE USER — never computed. */
+  userConfidence?: UserConfidence;
+  judgments: ComparisonJudgment[];
+  /** Append-only change log. */
+  revisions: { at: ISO; note: string }[];
+  /** Append-only reflective outcome reviews. */
+  outcomeReviews: OutcomeReview[];
+  fingerprint?: SavedFingerprint;
+  /** Sensitive-topic caution (medical/legal/financial/self-harm), if detected. */
+  sensitive?: string;
+  aiModel: string;
+  source: "ai" | "mock";
+  coverage: Coverage | null;
+  partial: boolean;
+  verified: boolean;
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -1002,4 +1164,5 @@ export interface StoreState {
   reviews: ReviewSession[];
   reasonings: ReasoningQuery[];
   embeddings: EmbeddingRecord[];
+  decisions: Decision[];
 }

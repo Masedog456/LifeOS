@@ -25,6 +25,7 @@ export const PIPELINE_VERSION = 1;
 
 /** Infer a record's kind from its id across the store. */
 function kindOf(state: StoreState, id: string): string {
+  if (id.startsWith("decision-config:")) return "configuration";
   if (state.beliefs.some((b) => b.id === id)) return "belief";
   if (state.sources.some((s) => s.id === id)) return "source";
   if (state.comparisons.some((c) => c.id === id)) return "comparison";
@@ -32,6 +33,9 @@ function kindOf(state: StoreState, id: string): string {
   if (state.megathreads.some((t) => t.id === id)) return "megathread";
   if (state.captures.some((c) => c.id === id)) return "capture";
   if (state.reflections.some((r) => r.id === id)) return "reflection";
+  if (state.reasonings.some((q) => q.id === id)) return "reasoning";
+  if (state.practices.some((p) => p.id === id)) return "practice";
+  if (state.decisions.some((d) => d.id === id)) return "decision";
   return "unknown";
 }
 
@@ -51,6 +55,27 @@ export function hashOfRecordId(state: StoreState, id: string): string {
   if (cap) return hashText(`${cap.text}`);
   const r = state.reflections.find((x) => x.id === id);
   if (r) return hashText(`${r.response}|${r.annotations.length}`);
+  const q = state.reasonings.find((x) => x.id === id);
+  if (q) return hashText(`${q.updatedAt}|${q.status}|${q.history.length}`);
+  const p = state.practices.find((x) => x.id === id);
+  if (p) return hashText(`${p.status}|${p.userWording ?? p.title}|${p.history.length}`);
+  // Decision-configuration dep: changes when options/criteria/weights change.
+  if (id.startsWith("decision-config:")) {
+    const d = state.decisions.find((x) => x.id === id.slice("decision-config:".length));
+    if (!d) return "";
+    return hashText(
+      JSON.stringify([
+        d.question,
+        d.options.map((o) => [o.name, o.kind, o.description, o.benefits, o.costs, o.risks, o.reversibility]),
+        d.criteria.map((c) => [c.name, c.weight]),
+        d.ratings,
+        d.constraints,
+        d.assumptions,
+      ]),
+    );
+  }
+  const dec = state.decisions.find((x) => x.id === id);
+  if (dec) return hashText(`${dec.updatedAt}|${dec.status}|${dec.finalChoice ?? ""}|${dec.outcomeReviews.length}`);
   return "";
 }
 
@@ -79,6 +104,10 @@ export function reasoningDeps(q: ReasoningQuery): string[] {
 export function weeklyDeps(r: ReviewSession): string[] {
   return [...new Set((r.synthesis?.highlights ?? []).flatMap((h) => h.recordIds))];
 }
+/** Decision deps: its evidence records + its own configuration (options/criteria). */
+export function decisionDeps(d: import("@/types/mvp").Decision): string[] {
+  return [...d.evidence.map((e) => e.id), `decision-config:${d.id}`];
+}
 
 const KIND_NOUN: Record<string, [string, string]> = {
   belief: ["belief was revised", "beliefs were revised"],
@@ -88,6 +117,10 @@ const KIND_NOUN: Record<string, [string, string]> = {
   megathread: ["thread changed", "threads changed"],
   capture: ["capture changed", "captures changed"],
   reflection: ["reflection changed", "reflections changed"],
+  reasoning: ["reasoning result updated", "reasoning results updated"],
+  practice: ["practice changed", "practices changed"],
+  decision: ["earlier decision changed", "earlier decisions changed"],
+  configuration: ["criterion or option changed", "criteria or options changed"],
   unknown: ["record changed", "records changed"],
 };
 

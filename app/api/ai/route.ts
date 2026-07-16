@@ -32,6 +32,7 @@ import { mockDialectic } from "@/lib/mockDialectic";
 import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
 import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFormation";
 import { mockReasoning } from "@/lib/mockReasoning";
+import { mockDecision, type MockDecisionContext } from "@/lib/mockDecision";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -53,7 +54,9 @@ type Task =
   | "weekly_synthesis"
   | "alignment_reflection"
   | "reasoning_synthesis"
-  | "reasoning_verify";
+  | "reasoning_verify"
+  | "decision_synthesis"
+  | "decision_verify";
 
 const ALLOWED_TASKS = new Set<Task>([
   "beliefs",
@@ -73,6 +76,8 @@ const ALLOWED_TASKS = new Set<Task>([
   "alignment_reflection",
   "reasoning_synthesis",
   "reasoning_verify",
+  "decision_synthesis",
+  "decision_verify",
 ]);
 
 const MAX_INPUT_CHARS = 50_000;
@@ -402,6 +407,74 @@ function reasoningPrompt(input: AiInput): string {
   ].join("\n");
 }
 
+/** Parse the decision context carried in `draft`. Falls back to an empty shell. */
+function parseDecisionContext(draft: string): MockDecisionContext {
+  try {
+    const o = JSON.parse(draft) as Partial<MockDecisionContext>;
+    return {
+      question: typeof o.question === "string" ? o.question : "",
+      options: Array.isArray(o.options) ? o.options : [],
+      criteria: Array.isArray(o.criteria) ? o.criteria : [],
+      constraints: Array.isArray(o.constraints) ? o.constraints : [],
+      assumptions: Array.isArray(o.assumptions) ? o.assumptions : [],
+      tradeoffContext: typeof o.tradeoffContext === "string" ? o.tradeoffContext : "",
+    };
+  } catch {
+    return { question: "", options: [], criteria: [], constraints: [], assumptions: [], tradeoffContext: "" };
+  }
+}
+
+function decisionPrompt(input: AiInput): string {
+  const ctx = parseDecisionContext(input.draft);
+  return [
+    "You are helping a person think through a meaningful decision. You clarify",
+    "tradeoffs — you NEVER choose for them, never say which option is right,",
+    "and never assign probabilities they did not supply.",
+    "Use ONLY the evidence items below; cite them by id in evidenceIds.",
+    "",
+    "RULES:",
+    "- tradeoffs, valuesAlignment, assumptions, risks, strongestFor, and",
+    "  strongestAgainst MUST each cite one or more listed evidence ids.",
+    "- valuesAlignment verdicts are supports|conflicts|mixed|unclear — prefer",
+    "  'unclear' over false certainty; each must cite the belief it concerns.",
+    "- No prescriptive language ('you should choose X', 'the best option is').",
+    "- No invented probabilities or guarantees. Cautious, plain wording.",
+    "- If this is a medical/legal/financial/safety matter, note in limitations",
+    "  that a qualified professional belongs in the decision. Never produce",
+    "  action plans that could cause harm.",
+    "- Scenarios (best/expected/worst/wildcard), preMortem, regret,",
+    "  missingEvidence, keyUncertainties, and whatWouldChange are reflective",
+    "  prompts grounded in the user's stated options — do not invent facts.",
+    "",
+    "Return ONLY a JSON object with keys: question, options (string[]),",
+    "criteria (string[]), tradeoffs ({statement, option?, evidenceIds[]}[]),",
+    "valuesAlignment ({option, verdict, statement, evidenceIds[]}[]),",
+    "assumptions ({statement, evidenceIds[]}[]), missingEvidence (string[]),",
+    "risks ({statement, option?, evidenceIds[]}[]),",
+    "reversibilityNotes ({option, assessment, note}[]),",
+    "regret ({regretDoing[], regretNotDoing[], recoverableRegrets[]}),",
+    "preMortem ({option, plausibleCauses[], preventableCauses[], earlyWarningSigns[]}[]),",
+    "scenarios ({option, best, expected, worst, wildcard}[]),",
+    "strongestFor ({option, statement, evidenceIds[]}[]),",
+    "strongestAgainst ({option, statement, evidenceIds[]}[]),",
+    "hybridSuggestion (string?), keyUncertainties (string[]),",
+    "whatWouldChange (string[]), questionsForHuman (string[]),",
+    "limitations (string[]), coverageNote (string).",
+    "",
+    `Decision question: ${ctx.question || input.question}`,
+    `Options: ${ctx.options.map((o) => o.name).join(" | ")}`,
+    `Criteria: ${ctx.criteria.join(", ") || "(none stated)"}`,
+    ctx.constraints.length ? `Constraints: ${ctx.constraints.join("; ")}` : "",
+    ctx.assumptions.length ? `Stated assumptions: ${ctx.assumptions.join("; ")}` : "",
+    "",
+    "Deterministic tradeoff context (user's own ratings — one perspective):",
+    ctx.tradeoffContext,
+    "",
+    "Evidence:",
+    evidenceBlock(input.evidence),
+  ].filter(Boolean).join("\n");
+}
+
 function promptFor(input: AiInput): string {
   const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (input.task) {
@@ -410,9 +483,12 @@ function promptFor(input: AiInput): string {
     case "compare_verify":
     case "dialectic_verify":
     case "reasoning_verify":
+    case "decision_verify":
       return verifyPrompt(input);
     case "reasoning_synthesis":
       return reasoningPrompt(input);
+    case "decision_synthesis":
+      return decisionPrompt(input);
     case "dialectic":
       return dialecticPrompt(input);
     case "thread_synthesis":
@@ -507,7 +583,10 @@ function mockFor(input: AiInput): unknown {
       return mockAlignment({ evidence: input.evidence });
     case "reasoning_synthesis":
       return mockReasoning({ evidence: input.evidence, question: input.question, mode: input.title });
+    case "decision_synthesis":
+      return mockDecision({ evidence: input.evidence, context: parseDecisionContext(input.draft) });
     case "reasoning_verify":
+    case "decision_verify":
       return { cautions: [], removeStatements: [] };
     case "beliefs":
     default:
@@ -536,8 +615,11 @@ function parseFor(input: AiInput, raw: string): unknown {
     case "alignment_reflection":
     case "reasoning_synthesis":
     case "reasoning_verify":
+    case "decision_synthesis":
+    case "decision_verify":
       // Return the raw parsed object; strict validation happens client-side
-      // (lib/comparison, lib/dialectic, lib/megathread, lib/formation, lib/reasoning).
+      // (lib/comparison, lib/dialectic, lib/megathread, lib/formation,
+      // lib/reasoning, lib/decision).
       return JSON.parse(jsonSlice(raw, "{"));
     case "beliefs":
     default: {
@@ -550,7 +632,7 @@ function parseFor(input: AiInput, raw: string): unknown {
 
 function maxTokensFor(task: Task): number {
   // Structured comparison/dialectic/synthesis outputs are large; more room.
-  if (task === "dialectic") return 4096;
+  if (task === "dialectic" || task === "decision_synthesis") return 4096;
   if (task === "compare" || task === "thread_synthesis" || task === "reasoning_synthesis") return 3072;
   return 1024;
 }
@@ -639,7 +721,7 @@ export async function POST(request: Request) {
   const EVIDENCE_TASKS = new Set<Task>([
     "compare", "compare_verify", "dialectic", "dialectic_verify", "thread_synthesis",
     "practice_suggest", "weekly_synthesis", "alignment_reflection",
-    "reasoning_synthesis", "reasoning_verify",
+    "reasoning_synthesis", "reasoning_verify", "decision_synthesis", "decision_verify",
   ]);
   const hasInput =
     input.task === "reduce_summary"

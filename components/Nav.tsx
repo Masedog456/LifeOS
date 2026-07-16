@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/inquiry", label: "Inquiry" },
   { href: "/threads", label: "Threads" },
   { href: "/reason", label: "Reason" },
+  { href: "/decisions", label: "Decide" },
   { href: "/review", label: "Review" },
   { href: "/inbox", label: "Inbox" },
   { href: "/constitution", label: "Constitution" },

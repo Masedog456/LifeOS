@@ -398,6 +398,60 @@ Constitution is never auto-changed.
   from current evidence, and **never overwrites the user's conclusions**. The
   approximate AI (and embedding) call count is shown before running.
 
+## Decision intelligence (LIFEOS-016 — implemented)
+
+A structured workspace for reasoning through meaningful decisions using the
+user's own sources, beliefs, threads, reflections, inquiries, practices, and
+prior decisions. LifeOS clarifies tradeoffs; **it never chooses**. No agents,
+no graph UI, no gamification, no automatic changes to beliefs/practices/the
+Constitution, and no medical/legal/financial-trading conclusions.
+
+- **Record** (`Decision`). Title, question, status (exploring/narrowed/
+  decided/deferred/abandoned), 2–8 options (named / do-nothing / defer /
+  hybrid; each with benefits, costs, risks, reversibility, time horizon,
+  assumptions, open questions), editable criteria with OPTIONAL 1–5 weights,
+  a user ratings grid (−2..+2), constraints/assumptions, evidence packet
+  (references — never text copies), a validated analysis with append-only
+  `history`, the user's provisional/final choice + rationale + **stated**
+  confidence (never computed), append-only judgments/revisions/outcome
+  reviews, and a freshness fingerprint.
+- **Deterministic first** (`lib/decision/tradeoffs.ts`). Weighted totals are
+  pure arithmetic over the user's own ratings, shown explicitly as ONE
+  PERSPECTIVE with no implied precision — and they work with zero AI.
+- **Evidence** (`lib/decision/evidence.ts`). A capped packet (≤40 items)
+  ranked by lexical overlap + local semantic similarity (when the LIFEOS-015
+  index exists) across beliefs, reflections, accepted practices, sources
+  (+ top quote inline), comparisons, inquiries, threads, reasoning results,
+  and earlier decisions. Evidence ids ARE real record ids; entry-point seeds
+  are force-included; missing data is never treated as fact.
+- **AI** (`decision_synthesis` + optional `decision_verify` for ≥5 options).
+  One structured call over the packet + the user's stated options/criteria/
+  ratings context. Validation (`lib/decision/schema.ts`) drops uncited
+  grounded findings (tradeoffs, values alignment, assumptions, risks,
+  strongest cases — flagged, never shown as conclusions), forces values-
+  alignment verdicts to supports/conflicts/mixed/**unclear** (never
+  certainty), and flags prescriptive ("you should choose") or falsely-certain
+  (guarantees, invented probabilities) language. Speculative sections
+  (scenarios best/expected/worst/wildcard, pre-mortem, regret, missing
+  evidence) are reflective prompts, bounded but not citation-gated. Honest
+  mock offline.
+- **Safety** (`lib/decision/safety.ts`). Medical/legal/financial/self-harm/
+  dangerous topics get a calm caution (a qualified professional belongs in
+  the decision; 988 for self-harm) — autonomy preserved, nothing blocked, no
+  harmful action plans. Ordinary decisions get no banner at all.
+- **Human control + outcome review**. Final choices happen only via an
+  explicit button with the user's own rationale; decisions can be deferred,
+  abandoned, or reopened; insights → Belief Inbox; decisions attach to
+  Megathreads. Outcome reviews are reflective and append-only (what
+  happened, surprises, wrong assumptions, lessons) — never a score.
+- **Freshness + rerun.** The fingerprint covers the evidence records AND a
+  `decision-config:` dep (options/criteria/weights/ratings), so "criterion or
+  option changed" surfaces alongside "belief was revised". Rerun preserves
+  the prior analysis in history and never touches the user's rationale or
+  choice. Persisted as `decisions` (migration
+  `0011_decision_intelligence.sql`, own-rows RLS). Entry points: Nav,
+  Constitution, Megathreads, Reasoning, Review.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on
