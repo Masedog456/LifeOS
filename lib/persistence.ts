@@ -57,6 +57,7 @@ function normalize(partial: Partial<StoreState> | null): StoreState {
     reviews: partial?.reviews ?? [],
     reasonings: partial?.reasonings ?? [],
     embeddings: partial?.embeddings ?? [],
+    decisions: partial?.decisions ?? [],
   };
 }
 

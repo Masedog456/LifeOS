@@ -76,7 +76,16 @@
     `embeddings` rows hold vectors + provenance — never keys or full-source
     text. Semantic retrieval is optional: with no embeddings, deterministic
     search works fully.
-11. **Project Settings → API**: copy the **Project URL** and the **anon
+11. Then run `supabase/migrations/0011_decision_intelligence.sql` (LIFEOS-016
+    — the `decisions` table: one jsonb-bearing row per decision with options,
+    criteria, ratings, evidence references, validated analysis + append-only
+    history/judgments/revisions/outcome-reviews, the user's provisional/final
+    choice + rationale + stated confidence, and a freshness fingerprint;
+    own-rows RLS with full CRUD). Additive and rerunnable; it does not touch
+    migrations 0001–0010, existing rows, other tables, or their RLS. LifeOS
+    never chooses automatically — `final_choice` is only ever written by an
+    explicit user action.
+12. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -213,6 +222,22 @@ changes runtime behavior.
       still required); a saved result detects changed evidence and shows why;
       re-running preserves prior history and never overwrites the user's
       provisional conclusion. (19/19 automated checks, local-embedder mode.)
+- [x] **Decision intelligence (LIFEOS-016):** a decision runs with 2 options
+      and safely up to the 8-option cap; criteria are editable and weighted;
+      deterministic weighted tradeoffs compute with NO AI and are labeled one
+      perspective; relevant beliefs/sources retrieved with provenance;
+      grounded findings cite valid evidence and unsupported ones are dropped +
+      flagged; prescriptive "you should choose" language is flagged; values
+      alignment never claims certainty; missing evidence, reversibility,
+      regret, pre-mortem, and probability-free scenarios all render; nothing
+      is chosen automatically — the final choice takes an explicit action with
+      the user's own rationale + stated confidence; the Constitution never
+      changes; decisions attach to Megathreads; outcome reviews are reflective,
+      append-only, and preserve the original decision (no gamification);
+      freshness detects a revised belief and rerun preserves prior analysis +
+      rationale + choice; sensitive (medical) questions show a professional-
+      care caution; decisions persist after refresh. (34/34 automated checks,
+      mock mode.)
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
@@ -272,6 +297,9 @@ changes runtime behavior.
 - [ ] (If a real embedding provider is configured) provider calls contain only
       the required text; the embedding key is server-only and never in the
       client bundle; no source text is logged.
+- [ ] Decisions sync: create a decision (with an analysis, a final choice, and
+      an outcome review) in Browser A → it appears in Browser B intact. A
+      second account cannot read it (RLS on `decisions`).
 
 ## C. Real Anthropic (CREDENTIAL-DEPENDENT, pending)
 

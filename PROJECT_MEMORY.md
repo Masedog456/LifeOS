@@ -23,6 +23,47 @@ pending Product Owner approval).
 
 ## 2. Current Sprint Status
 
+- Date: 2026-07-16
+- **LIFEOS-016 — Decision intelligence: implemented.** A structured workspace
+  for meaningful decisions grounded in the user's own records. **LifeOS
+  clarifies tradeoffs; it never chooses.** `Decision` record: question,
+  status (exploring/narrowed/decided/deferred/abandoned), 2–8 options
+  (named/do-nothing/defer/hybrid with benefits/costs/risks/reversibility/
+  time-horizon/assumptions/open-questions), editable criteria + optional 1–5
+  weights, a −2..+2 ratings grid, constraints/assumptions, capped evidence
+  packet (≤40 real record ids across beliefs/reflections/practices/sources/
+  comparisons/inquiries/threads/reasonings/earlier decisions, lexical+local-
+  semantic ranked, entry-point seeds force-included), validated
+  `DecisionAnalysisResult`, append-only history/judgments/revisions/
+  outcome-reviews, provisional/final choice + rationale + USER-stated
+  confidence, freshness fingerprint (evidence + a `decision-config:` dep so
+  "criterion or option changed" surfaces). Deterministic first
+  (`lib/decision/tradeoffs.ts`): weighted totals from the user's own ratings,
+  labeled one perspective, zero AI needed. AI: one `decision_synthesis` call
+  (+ `decision_verify` for ≥5 options) on the single `/api/ai` route;
+  validation (`lib/decision/schema.ts`) drops uncited grounded findings
+  (flagged), forces values-alignment verdicts to supports/conflicts/mixed/
+  unclear (never certainty), flags prescriptive ("you should choose") and
+  falsely-certain (guarantees, invented probabilities) language; speculative
+  sections (scenarios/pre-mortem/regret/missing-evidence) are reflective and
+  probability-free; honest mock offline. Safety (`lib/decision/safety.ts`):
+  calm cautions for medical/legal/financial/self-harm/dangerous topics
+  (professional belongs in the decision; 988 line), autonomy preserved,
+  ordinary decisions get no banner. Human control: final choice only via an
+  explicit action with the user's own rationale; defer/abandon/reopen;
+  insights → Belief Inbox; attach to Megathread; outcome reviews reflective +
+  append-only (no gamification); rerun preserves prior analysis + rationale +
+  choice, never silently reverses a decision. Persistence: `decisions` state
+  + adapters + additive migration `0011_decision_intelligence.sql` (own-rows
+  RLS, rerunnable; 0001–0010 untouched). New `/decisions` + `/decisions/[id]`;
+  entry points from Nav ("Decide"), Constitution, Megathreads, Reasoning, and
+  Review (reflection → decision evidence). Verified: **34/34 decision
+  checks** + all prior suites (19/19 semantic/freshness, 19/19 reasoning,
+  23/23 formation, 21/21 megathread, 22/22 dialectic, 15/15 comparison, 9/9
+  regression, 12/12 long-source, 16/16 PDF, 11/11 retrieval), zero runtime
+  errors; `lint`/`build` green. Supabase `decisions` sync/RLS/cross-device is
+  code-complete but credential-pending. Still one AI route; no agents, graph
+  UI, notifications, or auto Constitution changes.
 - Date: 2026-07-13
 - **LIFEOS-015 — Semantic retrieval & evidence freshness: implemented.** An
   OPTIONAL semantic layer that improves recall/candidate-selection without
@@ -1175,3 +1216,33 @@ scope or order.
   code-complete but credential-pending. No graph UI, autonomous agents, auto
   Constitution changes, or new AI routes beyond `/api/ai` (+ the non-AI
   `/api/embed` + `/api/extract` utility routes).
+- 2026-07-16 — Implemented **LIFEOS-016 decision intelligence** (base: merged
+  LIFEOS-015 on `main`; branch restarted from `origin/main`). New:
+  `lib/decision/{safety,tradeoffs,evidence,schema,run}.ts` (sensitive-topic
+  cautions; deterministic weighted tradeoffs from user ratings; capped
+  evidence packet over beliefs/reflections/practices/sources/comparisons/
+  inquiries/threads/reasonings/earlier decisions; strict validation dropping
+  uncited findings + flagging prescriptive/falsely-certain language;
+  orchestrator with optional verify for ≥5 options), `lib/mockDecision.ts`,
+  `components/DecisionAnalysisView.tsx`, `app/decisions/page.tsx` +
+  `app/decisions/[id]/page.tsx`,
+  `supabase/migrations/0011_decision_intelligence.sql`. Extended
+  `types/mvp.ts` (`Decision`, `DecisionOption`, `DecisionCriterion`,
+  `DecisionAnalysisResult` + sub-types, `OutcomeReview`,
+  `StoreState.decisions`), `app/api/ai/route.ts` (`decision_synthesis` +
+  `decision_verify`, 4096 max_tokens; decision context carried in `draft`),
+  `lib/aiClient.ts` (`decisionSynthesis`/`verifyDecision`),
+  `lib/freshness/fingerprint.ts` (resolves reasonings/practices/decisions +
+  `decision-config:` deps; `decisionDeps`; new change nouns incl. "criterion
+  or option changed"), `lib/mvpStore.ts` (decisions state + create/option/
+  criterion/rating/analysis/choice/outcome-review/judgment/attach actions —
+  `setFinalChoice` is the ONLY path to a final choice),
+  `lib/persistence.ts`, `lib/adapters/{localAdapter,supabaseAdapter}.ts`
+  (load/save/delete + row mappers). Entry points: `components/Nav.tsx`
+  ("Decide"), `app/constitution/page.tsx`, `app/threads/[id]/page.tsx`,
+  `app/reason/[id]/page.tsx`, `app/review/page.tsx` (saved reflection → "use
+  as decision evidence"). Verified 34/34 decision + all prior suites, zero
+  runtime errors; `lint`=0, `build`=0. Supabase `decisions` persistence is
+  code-complete but credential-pending. README unchanged (no setup required;
+  the workspace is self-describing). No agents, graph UI, notifications,
+  gamification, auto Constitution changes, or new AI routes beyond `/api/ai`.

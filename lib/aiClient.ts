@@ -20,6 +20,7 @@ import { mockDialectic } from "@/lib/mockDialectic";
 import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
 import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFormation";
 import { mockReasoning } from "@/lib/mockReasoning";
+import { mockDecision, type MockDecisionContext } from "@/lib/mockDecision";
 import type { EvidenceItem } from "@/types/mvp";
 
 export type AiSource = "ai" | "mock";
@@ -196,6 +197,29 @@ export function reasoningSynthesis(args: { evidence: EvidenceItem[]; question: s
 export function verifyReasoning(evidence: EvidenceItem[], draft: unknown) {
   return call<{ cautions?: string[]; removeStatements?: string[] }>(
     { task: "reasoning_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
+    () => ({ cautions: [], removeStatements: [] }),
+  );
+}
+
+// ---------- Decision intelligence (LIFEOS-016) ----------
+
+/** One structured decision-analysis call. RAW object (validated by caller). */
+export function decisionSynthesis(args: { evidence: EvidenceItem[]; context: MockDecisionContext }) {
+  return call<unknown>(
+    {
+      task: "decision_synthesis",
+      evidence: toWire(args.evidence),
+      question: args.context.question,
+      draft: JSON.stringify(args.context),
+    },
+    () => mockDecision({ evidence: args.evidence, context: args.context }),
+  );
+}
+
+/** Optional verification pass for large decisions. */
+export function verifyDecision(evidence: EvidenceItem[], draft: unknown) {
+  return call<{ cautions?: string[]; removeStatements?: string[] }>(
+    { task: "decision_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
     () => ({ cautions: [], removeStatements: [] }),
   );
 }

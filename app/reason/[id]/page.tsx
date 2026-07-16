@@ -63,9 +63,17 @@ export default function ReasoningDetailPage() {
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
       <div className="flex items-center justify-between gap-3">
         <Link href="/reason" className="text-sm text-zinc-500 underline-offset-4 hover:underline">← Reason</Link>
-        <button type="button" onClick={rerun} disabled={rerunning} className="text-sm text-zinc-500 underline-offset-4 hover:underline disabled:opacity-40">
-          {rerunning ? "Re-running…" : "Re-run (keeps history) →"}
-        </button>
+        <div className="flex items-center gap-4">
+          <Link
+            href={`/decisions?reasoning=${query.id}&q=${encodeURIComponent(query.question.slice(0, 120))}`}
+            className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+          >
+            Turn into a decision →
+          </Link>
+          <button type="button" onClick={rerun} disabled={rerunning} className="text-sm text-zinc-500 underline-offset-4 hover:underline disabled:opacity-40">
+            {rerunning ? "Re-running…" : "Re-run (keeps history) →"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-4">

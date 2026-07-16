@@ -37,6 +37,7 @@ function ReviewItem({
   reviewId: string;
 }) {
   const [done, setDone] = useState<string | null>(null);
+  const [savedReflectionId, setSavedReflectionId] = useState<string | null>(null);
   const [reflecting, setReflecting] = useState(false);
   const [reflection, setReflection] = useState("");
   const [revising, setRevising] = useState(false);
@@ -63,6 +64,7 @@ function ReviewItem({
     attachReflectionToReview(reviewId, rid);
     recordReviewJudgment(reviewId, item.id, "reflected");
     setReflecting(false);
+    setSavedReflectionId(rid);
     setDone("Reflection saved — your belief was not changed.");
   }
 
@@ -105,7 +107,14 @@ function ReviewItem({
       <p className="mt-1 text-xs text-zinc-400">Why now: {item.reason}</p>
 
       {done ? (
-        <p className="mt-3 text-sm text-zinc-500">{done}</p>
+        <p className="mt-3 text-sm text-zinc-500">
+          {done}
+          {savedReflectionId && (
+            <Link href={`/decisions?reflection=${savedReflectionId}`} className="ml-2 underline-offset-4 hover:underline">
+              Use as decision evidence →
+            </Link>
+          )}
+        </p>
       ) : reflecting ? (
         <div className="mt-3">
           <textarea value={reflection} onChange={(e) => setReflection(e.target.value)} rows={3} autoFocus placeholder="Write a reflection…" className="w-full resize-none rounded-lg border border-black/[.12] bg-transparent p-2.5 text-sm outline-none dark:border-white/[.15]" />
