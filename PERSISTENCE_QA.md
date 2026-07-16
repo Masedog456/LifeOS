@@ -85,7 +85,18 @@
     migrations 0001–0010, existing rows, other tables, or their RLS. LifeOS
     never chooses automatically — `final_choice` is only ever written by an
     explicit user action.
-12. **Project Settings → API**: copy the **Project URL** and the **anon
+12. Then run `supabase/migrations/0012_reflective_practice.sql` (LIFEOS-017
+    — the `formation_sessions` table: one jsonb-bearing row per reflection
+    with a typed prompt, an immutable reflection body, explicit links to the
+    rest of the system, user-authored structured capture (lessons, unresolved
+    questions, emotional observations, revised assumptions, belief candidates,
+    follow-up reflections), evidence references, a validated cited synthesis +
+    append-only history/judgments, and a freshness fingerprint; own-rows RLS
+    with full CRUD). Additive and rerunnable; it does not touch migrations
+    0001–0011, existing rows, other tables, or their RLS. Nothing here changes
+    the Constitution, a decision, or a thread automatically — every promotion
+    (belief → Inbox, attach-to-thread, new inquiry) is an explicit user action.
+13. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -238,6 +249,25 @@ changes runtime behavior.
       rationale + choice; sensitive (medical) questions show a professional-
       care caution; decisions persist after refresh. (34/34 automated checks,
       mock mode.)
+- [x] **Reflective practice & formation (LIFEOS-017):** the reflection engine
+      generates thoughtful, non-shallow prompts from the user's own knowledge
+      (never productivity/streak prompts); a session is created from any of the
+      built-in types (and custom); the reflection body is immutable once saved;
+      structured capture (lessons, unresolved questions, emotional observations,
+      revised assumptions, belief candidates, follow-ups) saves independently;
+      one synthesis runs deterministically-first with honest mock provenance;
+      belief-revision suggestions cite valid evidence and uncited ones are
+      dropped + flagged; every synthesis insight is judgeable (Accept → Inbox);
+      belief candidates promote to the Inbox only by explicit action (nothing
+      touches the Constitution automatically); the freshness badge shows Current
+      after synthesis and flips stale when the reflection's own capture changes,
+      with history-preserving re-run; the derived formation timeline is
+      chronological and read-only; cadence review switches across Today/Week/
+      Month/Year/Life; entry points from Constitution/Threads/Decisions/Inquiry/
+      Library open a linked session; sessions persist after refresh; no secret
+      value leaks into the page. (26/26 automated checks, mock mode.) All prior
+      suites still green (decision 34, semantic 19, review, threads, inquiry,
+      compare, retrieval, reason, qa3, pdf, long-source).
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption

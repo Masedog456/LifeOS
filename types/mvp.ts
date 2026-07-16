@@ -1150,6 +1150,133 @@ export interface Decision {
   updatedAt: ISO;
 }
 
+// ---------- Reflective practice & daily formation (LIFEOS-017) ----------
+
+/**
+ * The kind of reflection. Built-in types shape the generated prompts and
+ * evidence; `custom` lets the user name their own (stored in `customType`).
+ */
+export type FormationSessionType =
+  | "morning"
+  | "evening"
+  | "decision_review"
+  | "book_integration"
+  | "conversation_review"
+  | "failure_analysis"
+  | "success_analysis"
+  | "conflict_reflection"
+  | "practice_reflection"
+  | "open"
+  | "custom";
+
+export type FormationSessionStatus = "draft" | "reflecting" | "synthesized" | "closed";
+
+/** A grounded synthesis finding — MUST cite record ids (evidence packet). */
+export interface FormationFinding {
+  statement: string;
+  evidenceIds: string[];
+}
+
+/**
+ * Structured synthesis of ONE reflection (Phase 5). Deterministic extraction
+ * first, then a single AI pass. Grounded findings cite real record ids;
+ * uncited ones are dropped. Every list is a SUGGESTION — nothing changes the
+ * user's Constitution, decisions, or threads automatically.
+ */
+export interface FormationSynthesisData {
+  themes: string[];
+  recurringTensions: string[];
+  /** Beliefs the reflection may bear on — cite the belief record. */
+  possibleBeliefRevisions: FormationFinding[];
+  possibleDecisionFollowups: string[];
+  possibleInquiryFollowups: string[];
+  possibleThreadAdditions: string[];
+  possiblePractices: string[];
+  questionsWorthRevisiting: string[];
+  itemsNeedingEvidence: string[];
+  limitations: string[];
+  coverageNote: string;
+  /** Findings dropped/softened in validation (uncited or over-reaching). */
+  flagged?: string[];
+}
+
+/**
+ * One reflection session — the bridge between experience and understanding.
+ * The `reflection` is immutable once written; structured fields and links are
+ * the user's; the synthesis is a derived, cited SUGGESTION with append-only
+ * history. LifeOS asks and clarifies — it never concludes for the user.
+ */
+export interface FormationSession {
+  id: string;
+  createdAt: ISO;
+  updatedAt: ISO;
+  title: string;
+  type: FormationSessionType;
+  /** Present only when `type === "custom"`. */
+  customType?: string;
+  /** The primary reflection prompt the session opened with. */
+  prompt: string;
+  /** Deterministically generated prompt set (Phase 4) — inspiration, not tasks. */
+  suggestedPrompts: string[];
+  /** The user's written reflection — never edited in place once set. */
+  reflection: string;
+  // ---- explicit links to the rest of the system ----
+  linkedDecisions: string[];
+  linkedBeliefs: string[];
+  linkedPractices: string[];
+  linkedThreads: string[];
+  linkedInquiries: string[];
+  linkedSources: string[];
+  linkedReflections: string[];
+  /** Record ids force-included in the evidence packet (entry-point seeds). */
+  seedRefs: string[];
+  // ---- user-authored structured capture ----
+  lessons: string[];
+  unresolvedQuestions: string[];
+  emotionalObservations: string[];
+  revisedAssumptions: string[];
+  /** First-person belief candidates the user may send to the Inbox — never auto. */
+  beliefCandidates: string[];
+  /** Prompts the user wants future-them to revisit. */
+  followUpReflections: string[];
+  // ---- derived synthesis (Phase 5) ----
+  evidence: EvidenceItem[];
+  synthesis?: FormationSynthesisData;
+  synthesisSource?: "ai" | "mock";
+  /** Append-only prior syntheses from reruns. */
+  history: { at: ISO; synthesis: FormationSynthesisData; source: "ai" | "mock"; note?: string }[];
+  fingerprint?: SavedFingerprint;
+  /** Append-only human verdicts on synthesis insights. */
+  judgments: ComparisonJudgment[];
+  status: FormationSessionStatus;
+  /** Sensitive-topic caution (medical/legal/financial/self-harm), if detected. */
+  sensitive?: string;
+  aiModel: string;
+  source: "ai" | "mock";
+  coverage: Coverage | null;
+  partial: boolean;
+  verified: boolean;
+}
+
+/** A derived, read-only formation-timeline event (built from records, never stored). */
+export type FormationTimelineKind =
+  | "reflection"
+  | "belief_revision"
+  | "decision"
+  | "outcome_review"
+  | "inquiry"
+  | "practice_change"
+  | "thread_created";
+
+export interface FormationTimelineItem {
+  id: string;
+  kind: FormationTimelineKind;
+  at: ISO;
+  title: string;
+  detail?: string;
+  href?: string;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -1165,4 +1292,5 @@ export interface StoreState {
   reasonings: ReasoningQuery[];
   embeddings: EmbeddingRecord[];
   decisions: Decision[];
+  formationSessions: FormationSession[];
 }

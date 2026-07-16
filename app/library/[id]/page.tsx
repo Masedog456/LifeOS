@@ -457,6 +457,12 @@ export default function ReaderPage() {
             >
               Trace influence →
             </Link>
+            <Link
+              href={`/formation?source=${id}&type=book_integration`}
+              className="text-xs text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              Integrate into your life →
+            </Link>
           </footer>
         </>
       )}

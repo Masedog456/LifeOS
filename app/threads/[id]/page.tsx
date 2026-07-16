@@ -100,6 +100,12 @@ export default function ThreadDetailPage() {
           >
             Use in a decision →
           </Link>
+          <Link
+            href={`/formation?thread=${thread.id}&type=open`}
+            className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+          >
+            Reflect on this thread →
+          </Link>
         </div>
       </div>
 

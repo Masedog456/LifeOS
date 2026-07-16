@@ -33,6 +33,7 @@ import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
 import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFormation";
 import { mockReasoning } from "@/lib/mockReasoning";
 import { mockDecision, type MockDecisionContext } from "@/lib/mockDecision";
+import { mockFormationSynthesis, type MockFormationContext } from "@/lib/mockFormationSession";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -56,7 +57,8 @@ type Task =
   | "reasoning_synthesis"
   | "reasoning_verify"
   | "decision_synthesis"
-  | "decision_verify";
+  | "decision_verify"
+  | "formation_synthesis";
 
 const ALLOWED_TASKS = new Set<Task>([
   "beliefs",
@@ -78,6 +80,7 @@ const ALLOWED_TASKS = new Set<Task>([
   "reasoning_verify",
   "decision_synthesis",
   "decision_verify",
+  "formation_synthesis",
 ]);
 
 const MAX_INPUT_CHARS = 50_000;
@@ -475,6 +478,63 @@ function decisionPrompt(input: AiInput): string {
   ].filter(Boolean).join("\n");
 }
 
+/** Parse the formation context carried in `draft`. Falls back to an empty shell. */
+function parseFormationContext(draft: string): MockFormationContext {
+  try {
+    const o = JSON.parse(draft) as Partial<MockFormationContext>;
+    const arr = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+    return {
+      reflection: typeof o.reflection === "string" ? o.reflection : "",
+      lessons: arr(o.lessons),
+      unresolvedQuestions: arr(o.unresolvedQuestions),
+      emotionalObservations: arr(o.emotionalObservations),
+      revisedAssumptions: arr(o.revisedAssumptions),
+      beliefCandidates: arr(o.beliefCandidates),
+    };
+  } catch {
+    return { reflection: "", lessons: [], unresolvedQuestions: [], emotionalObservations: [], revisedAssumptions: [], beliefCandidates: [] };
+  }
+}
+
+function formationPrompt(input: AiInput): string {
+  const ctx = parseFormationContext(input.draft);
+  return [
+    "You are helping a person integrate a personal reflection into their",
+    "ongoing formation. You do NOT judge them, diagnose them, or tell them what",
+    "to believe or do. You surface themes, tensions, and possibilities they can",
+    "choose to act on — every output is a SUGGESTION, never a verdict.",
+    "Use ONLY the evidence items below; cite them by id in evidenceIds.",
+    "",
+    "HARD RULES:",
+    "- possibleBeliefRevisions MUST each cite one or more listed evidence ids",
+    "  (the belief they bear on). Never cite an id not listed.",
+    "- NO moralizing or accusation ('you should', 'you must', 'you failed',",
+    "  'lazy', 'hypocrite'). NO false certainty ('this proves', 'definitely').",
+    "- Do NOT infer facts about the person's life from absence of records.",
+    "- Prompts and questions must EXAMINE, never chase productivity or streaks.",
+    "- If this touches a medical/legal/financial/safety matter, note in",
+    "  limitations that a qualified person belongs in it.",
+    "",
+    "Return ONLY a JSON object with keys: themes (string[]),",
+    "recurringTensions (string[]),",
+    "possibleBeliefRevisions ({statement, evidenceIds[]}[]),",
+    "possibleDecisionFollowups (string[]), possibleInquiryFollowups (string[]),",
+    "possibleThreadAdditions (string[]), possiblePractices (string[]),",
+    "questionsWorthRevisiting (string[]), itemsNeedingEvidence (string[]),",
+    "limitations (string[]), coverageNote (string).",
+    "",
+    `The person's reflection:\n"""\n${ctx.reflection.slice(0, MAX_MODEL_CHARS)}\n"""`,
+    ctx.lessons.length ? `Lessons they named: ${ctx.lessons.join("; ")}` : "",
+    ctx.unresolvedQuestions.length ? `Unresolved questions: ${ctx.unresolvedQuestions.join("; ")}` : "",
+    ctx.emotionalObservations.length ? `Emotional observations: ${ctx.emotionalObservations.join("; ")}` : "",
+    ctx.revisedAssumptions.length ? `Revised assumptions: ${ctx.revisedAssumptions.join("; ")}` : "",
+    ctx.beliefCandidates.length ? `Belief candidates: ${ctx.beliefCandidates.join("; ")}` : "",
+    "",
+    "Evidence from their records:",
+    evidenceBlock(input.evidence),
+  ].filter(Boolean).join("\n");
+}
+
 function promptFor(input: AiInput): string {
   const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (input.task) {
@@ -489,6 +549,8 @@ function promptFor(input: AiInput): string {
       return reasoningPrompt(input);
     case "decision_synthesis":
       return decisionPrompt(input);
+    case "formation_synthesis":
+      return formationPrompt(input);
     case "dialectic":
       return dialecticPrompt(input);
     case "thread_synthesis":
@@ -585,6 +647,8 @@ function mockFor(input: AiInput): unknown {
       return mockReasoning({ evidence: input.evidence, question: input.question, mode: input.title });
     case "decision_synthesis":
       return mockDecision({ evidence: input.evidence, context: parseDecisionContext(input.draft) });
+    case "formation_synthesis":
+      return mockFormationSynthesis({ evidence: input.evidence, context: parseFormationContext(input.draft) });
     case "reasoning_verify":
     case "decision_verify":
       return { cautions: [], removeStatements: [] };
@@ -617,6 +681,7 @@ function parseFor(input: AiInput, raw: string): unknown {
     case "reasoning_verify":
     case "decision_synthesis":
     case "decision_verify":
+    case "formation_synthesis":
       // Return the raw parsed object; strict validation happens client-side
       // (lib/comparison, lib/dialectic, lib/megathread, lib/formation,
       // lib/reasoning, lib/decision).
@@ -633,7 +698,7 @@ function parseFor(input: AiInput, raw: string): unknown {
 function maxTokensFor(task: Task): number {
   // Structured comparison/dialectic/synthesis outputs are large; more room.
   if (task === "dialectic" || task === "decision_synthesis") return 4096;
-  if (task === "compare" || task === "thread_synthesis" || task === "reasoning_synthesis") return 3072;
+  if (task === "compare" || task === "thread_synthesis" || task === "reasoning_synthesis" || task === "formation_synthesis") return 3072;
   return 1024;
 }
 
@@ -722,6 +787,7 @@ export async function POST(request: Request) {
     "compare", "compare_verify", "dialectic", "dialectic_verify", "thread_synthesis",
     "practice_suggest", "weekly_synthesis", "alignment_reflection",
     "reasoning_synthesis", "reasoning_verify", "decision_synthesis", "decision_verify",
+    "formation_synthesis",
   ]);
   const hasInput =
     input.task === "reduce_summary"

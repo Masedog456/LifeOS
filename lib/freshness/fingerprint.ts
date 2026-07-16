@@ -26,6 +26,7 @@ export const PIPELINE_VERSION = 1;
 /** Infer a record's kind from its id across the store. */
 function kindOf(state: StoreState, id: string): string {
   if (id.startsWith("decision-config:")) return "configuration";
+  if (id.startsWith("formation-config:")) return "reflection-content";
   if (state.beliefs.some((b) => b.id === id)) return "belief";
   if (state.sources.some((s) => s.id === id)) return "source";
   if (state.comparisons.some((c) => c.id === id)) return "comparison";
@@ -36,6 +37,7 @@ function kindOf(state: StoreState, id: string): string {
   if (state.reasonings.some((q) => q.id === id)) return "reasoning";
   if (state.practices.some((p) => p.id === id)) return "practice";
   if (state.decisions.some((d) => d.id === id)) return "decision";
+  if (state.formationSessions.some((f) => f.id === id)) return "reflection";
   return "unknown";
 }
 
@@ -76,6 +78,23 @@ export function hashOfRecordId(state: StoreState, id: string): string {
   }
   const dec = state.decisions.find((x) => x.id === id);
   if (dec) return hashText(`${dec.updatedAt}|${dec.status}|${dec.finalChoice ?? ""}|${dec.outcomeReviews.length}`);
+  // Formation-configuration dep: changes when the reflection/capture changes.
+  if (id.startsWith("formation-config:")) {
+    const f = state.formationSessions.find((x) => x.id === id.slice("formation-config:".length));
+    if (!f) return "";
+    return hashText(
+      JSON.stringify([
+        f.reflection,
+        f.lessons,
+        f.unresolvedQuestions,
+        f.emotionalObservations,
+        f.revisedAssumptions,
+        f.beliefCandidates,
+      ]),
+    );
+  }
+  const fs = state.formationSessions.find((x) => x.id === id);
+  if (fs) return hashText(`${fs.updatedAt}|${fs.status}|${fs.reflection.length}|${fs.judgments.length}`);
   return "";
 }
 
@@ -108,6 +127,10 @@ export function weeklyDeps(r: ReviewSession): string[] {
 export function decisionDeps(d: import("@/types/mvp").Decision): string[] {
   return [...d.evidence.map((e) => e.id), `decision-config:${d.id}`];
 }
+/** Formation-session deps: its evidence records + its own reflection content. */
+export function formationDeps(s: import("@/types/mvp").FormationSession): string[] {
+  return [...s.evidence.map((e) => e.id), `formation-config:${s.id}`];
+}
 
 const KIND_NOUN: Record<string, [string, string]> = {
   belief: ["belief was revised", "beliefs were revised"],
@@ -121,6 +144,7 @@ const KIND_NOUN: Record<string, [string, string]> = {
   practice: ["practice changed", "practices changed"],
   decision: ["earlier decision changed", "earlier decisions changed"],
   configuration: ["criterion or option changed", "criteria or options changed"],
+  "reflection-content": ["your reflection changed", "your reflection changed"],
   unknown: ["record changed", "records changed"],
 };
 
