@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/threads", label: "Threads" },
   { href: "/reason", label: "Reason" },
   { href: "/decisions", label: "Decide" },
+  { href: "/formation", label: "Reflect" },
   { href: "/review", label: "Review" },
   { href: "/inbox", label: "Inbox" },
   { href: "/constitution", label: "Constitution" },

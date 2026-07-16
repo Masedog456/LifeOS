@@ -508,6 +508,12 @@ export default function DecisionDetailPage() {
           className="mt-2 w-full resize-none rounded-lg border border-black/[.10] bg-transparent p-2.5 text-sm outline-none dark:border-white/[.12]"
         />
       </section>
+
+      <div className="border-t border-black/[.05] pt-6 dark:border-white/[.06]">
+        <Link href={`/formation?decision=${decision.id}&type=decision_review`} className="text-sm text-zinc-500 underline-offset-4 hover:underline">
+          Reflect on this decision →
+        </Link>
+      </div>
     </main>
   );
 }

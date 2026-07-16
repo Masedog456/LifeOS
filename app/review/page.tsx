@@ -200,8 +200,9 @@ export default function ReviewPage() {
         </section>
       )}
 
-      <div className="mt-12 border-t border-black/[.05] pt-6 dark:border-white/[.06]">
+      <div className="mt-12 flex flex-wrap gap-4 border-t border-black/[.05] pt-6 dark:border-white/[.06]">
         <Link href="/review/weekly" className="text-sm text-zinc-500 underline-offset-4 hover:underline">Weekly review & alignment →</Link>
+        <Link href="/formation" className="text-sm text-zinc-500 underline-offset-4 hover:underline">Reflect & formation timeline →</Link>
       </div>
     </main>
   );

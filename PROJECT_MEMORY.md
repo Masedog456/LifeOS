@@ -24,6 +24,43 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-16
+- **LIFEOS-017 — Reflective practice & daily formation: implemented.** A place
+  the user returns to in order to examine themselves, integrate experience, and
+  grow — the bridge from knowledge → experience → reflection → belief revision
+  → character. **Not** productivity, task management, streaks, or gamification.
+  **LifeOS asks and clarifies; it never concludes for the user**, and nothing
+  changes the Constitution, a decision, or a thread automatically. New
+  `FormationSession` record: a typed session (morning/evening/decision-review/
+  book-integration/conversation-review/failure/success/conflict/practice/open/
+  **custom**), a generated prompt set, an **immutable** reflection body,
+  explicit links to decisions/beliefs/practices/threads/inquiries/sources/
+  reflections, user-authored structured capture (lessons, unresolved questions,
+  emotional observations, revised assumptions, belief candidates, follow-up
+  reflections), a capped evidence packet (≤40 real record ids), a validated
+  `FormationSynthesisData` with append-only history + judgments, and a
+  freshness fingerprint (evidence + a `formation-config:` dep so "your
+  reflection changed" surfaces). Reflection engine (`lib/formation/prompts.ts`):
+  deterministic, examining prompts drawn from the user's own knowledge, never
+  shallow/productivity. Synthesis: one `formation_synthesis` call on the single
+  `/api/ai` route, deterministic-extraction first; validation
+  (`lib/formation/sessionSchema.ts`) drops uncited belief-revision suggestions
+  (flagged) and softens moralizing/false-certainty language; honest mock
+  offline. Formation timeline (`lib/formation/timeline.ts`): derived, read-only,
+  chronological, deduped. Cadence review (`lib/formation/cadence.ts`): Today/
+  Week/Month/Year/Life, invitational (never notifications). Human control:
+  every insight judgeable (Accept → Belief Inbox); belief candidates promote by
+  explicit action; attach to Megathread; unresolved questions → inquiry — all
+  user-initiated. Persistence: `formationSessions` state + adapters + additive
+  migration `0012_reflective_practice.sql` (own-rows RLS, rerunnable; 0001–0011
+  untouched). New `/formation`, `/formation/[id]`, `/formation/timeline`; entry
+  points from Nav ("Reflect"), Constitution, Megathreads, Decisions, Inquiry,
+  Library, Review. Verified: **26/26 formation checks** + all prior suites
+  (34/34 decision, 19/19 semantic/freshness, reasoning, review, threads,
+  inquiry, compare, retrieval, qa3, PDF, long-source), zero runtime errors;
+  `lint`/`build` green. Supabase `formation_sessions` sync/RLS/cross-device is
+  code-complete but credential-pending. Still one AI route; no agents, graph
+  UI, notifications, or auto Constitution changes.
+- Date: 2026-07-16
 - **LIFEOS-016 — Decision intelligence: implemented.** A structured workspace
   for meaningful decisions grounded in the user's own records. **LifeOS
   clarifies tradeoffs; it never chooses.** `Decision` record: question,
@@ -1246,3 +1283,36 @@ scope or order.
   code-complete but credential-pending. README unchanged (no setup required;
   the workspace is self-describing). No agents, graph UI, notifications,
   gamification, auto Constitution changes, or new AI routes beyond `/api/ai`.
+- 2026-07-16 — Implemented **LIFEOS-017 reflective practice & daily formation**
+  (base: merged LIFEOS-016 on `main`; branch restarted from `origin/main`).
+  New: `lib/formation/{prompts,sessionEvidence,sessionSchema,sessionRun,
+  timeline,cadence}.ts` (deterministic non-shallow prompt engine from the
+  user's own knowledge; capped evidence packet; validation dropping uncited
+  belief-revision suggestions + softening moralizing/false-certainty language;
+  deterministic-first synthesis orchestrator; derived read-only chronological
+  timeline; five-horizon invitational cadence review), `lib/mockFormationSession.ts`,
+  `components/FormationSynthesisView.tsx` + `components/FormationTimeline.tsx`,
+  `app/formation/page.tsx` (type picker + create + cadence tabs + recent
+  sessions), `app/formation/[id]/page.tsx` (workspace: prompts, immutable
+  reflection, structured capture, run/rerun synthesis + FreshnessBadge,
+  judgeable synthesis, belief-candidate → Inbox, attach-to-thread),
+  `app/formation/timeline/page.tsx`, `supabase/migrations/0012_reflective_practice.sql`.
+  Extended `types/mvp.ts` (`FormationSession`, `FormationSynthesisData`,
+  `FormationFinding`, `FormationTimelineItem` + enums, `StoreState.formationSessions`),
+  `app/api/ai/route.ts` (`formation_synthesis`, 3072 max_tokens; context in
+  `draft`, reflection in `text`), `lib/aiClient.ts` (`formationSynthesis`),
+  `lib/freshness/fingerprint.ts` (resolves formation sessions +
+  `formation-config:` deps; `formationDeps`; "your reflection changed" noun),
+  `lib/mvpStore.ts` (formationSessions state + create/reflection(immutable)/
+  fields/status/link/synthesis/judge/attach actions), `lib/persistence.ts`,
+  `lib/adapters/{localAdapter,supabaseAdapter}.ts` (load/save/delete + row
+  mappers). Entry points: `components/Nav.tsx` ("Reflect"),
+  `app/constitution/page.tsx`, `app/threads/[id]/page.tsx`,
+  `app/decisions/[id]/page.tsx`, `app/inquiry/[id]/page.tsx`,
+  `app/library/[id]/page.tsx`, `app/review/page.tsx`. Verified 26/26 formation
+  + all prior suites (decision 34, semantic 19, review, threads, inquiry,
+  compare, retrieval, reason, qa3, pdf, long-source), zero runtime errors;
+  `lint`=0, `build`=0. Supabase `formation_sessions` persistence is
+  code-complete but credential-pending. README unchanged. No agents, graph UI,
+  notifications, gamification, auto Constitution changes, or new AI routes
+  beyond `/api/ai`.

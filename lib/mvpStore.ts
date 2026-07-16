@@ -49,6 +49,10 @@ import type {
   DecisionStatus,
   OutcomeReview,
   UserConfidence,
+  FormationSession,
+  FormationSessionStatus,
+  FormationSessionType,
+  FormationSynthesisData,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
@@ -71,6 +75,7 @@ const EMPTY_STATE: StoreState = {
   reasonings: [],
   embeddings: [],
   decisions: [],
+  formationSessions: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -188,6 +193,27 @@ export function hydrate() {
           revisions: asArray<Decision["revisions"][number]>(d?.revisions),
           outcomeReviews: asArray<OutcomeReview>(d?.outcomeReviews),
         })),
+        formationSessions: asArray<FormationSession>(parsed.formationSessions).map((f) => ({
+          ...f,
+          suggestedPrompts: asArray<string>(f?.suggestedPrompts),
+          linkedDecisions: asArray<string>(f?.linkedDecisions),
+          linkedBeliefs: asArray<string>(f?.linkedBeliefs),
+          linkedPractices: asArray<string>(f?.linkedPractices),
+          linkedThreads: asArray<string>(f?.linkedThreads),
+          linkedInquiries: asArray<string>(f?.linkedInquiries),
+          linkedSources: asArray<string>(f?.linkedSources),
+          linkedReflections: asArray<string>(f?.linkedReflections),
+          seedRefs: asArray<string>(f?.seedRefs),
+          lessons: asArray<string>(f?.lessons),
+          unresolvedQuestions: asArray<string>(f?.unresolvedQuestions),
+          emotionalObservations: asArray<string>(f?.emotionalObservations),
+          revisedAssumptions: asArray<string>(f?.revisedAssumptions),
+          beliefCandidates: asArray<string>(f?.beliefCandidates),
+          followUpReflections: asArray<string>(f?.followUpReflections),
+          evidence: asArray<FormationSession["evidence"][number]>(f?.evidence),
+          history: asArray<FormationSession["history"][number]>(f?.history),
+          judgments: asArray<FormationSession["judgments"][number]>(f?.judgments),
+        })),
       };
       emit();
     }
@@ -201,7 +227,7 @@ export function resetStore() {
   clearState();
   setState({
     captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
-    comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [],
+    comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [], formationSessions: [],
   });
 }
 
@@ -1248,4 +1274,181 @@ export function attachDecisionToThread(decisionId: string, threadId: string): vo
 
 export function decisionById(s: StoreState, decisionId: string): Decision | undefined {
   return s.decisions.find((d) => d.id === decisionId);
+}
+
+// ---------- Reflective practice & formation actions (LIFEOS-017) ----------
+
+/** Create a reflection session. LifeOS asks and clarifies; the user reflects and decides. */
+export function createFormationSession(fields: {
+  title: string;
+  type: FormationSessionType;
+  customType?: string;
+  prompt: string;
+  suggestedPrompts?: string[];
+  seedRefs?: string[];
+  linkedBeliefs?: string[];
+  linkedDecisions?: string[];
+  linkedThreads?: string[];
+  linkedInquiries?: string[];
+  linkedSources?: string[];
+  linkedPractices?: string[];
+  linkedReflections?: string[];
+  sensitive?: string;
+}): string {
+  const at = now();
+  const session: FormationSession = {
+    id: id(),
+    createdAt: at,
+    updatedAt: at,
+    title: fields.title.trim() || "Untitled reflection",
+    type: fields.type,
+    customType: fields.customType?.trim() || undefined,
+    prompt: fields.prompt.trim(),
+    suggestedPrompts: fields.suggestedPrompts ?? [],
+    reflection: "",
+    linkedDecisions: fields.linkedDecisions ?? [],
+    linkedBeliefs: fields.linkedBeliefs ?? [],
+    linkedPractices: fields.linkedPractices ?? [],
+    linkedThreads: fields.linkedThreads ?? [],
+    linkedInquiries: fields.linkedInquiries ?? [],
+    linkedSources: fields.linkedSources ?? [],
+    linkedReflections: fields.linkedReflections ?? [],
+    seedRefs: fields.seedRefs ?? [],
+    lessons: [],
+    unresolvedQuestions: [],
+    emotionalObservations: [],
+    revisedAssumptions: [],
+    beliefCandidates: [],
+    followUpReflections: [],
+    evidence: [],
+    history: [],
+    judgments: [],
+    status: "draft",
+    sensitive: fields.sensitive,
+    aiModel: "mock",
+    source: "mock",
+    coverage: null,
+    partial: false,
+    verified: false,
+  };
+  setState({ ...state, formationSessions: [session, ...state.formationSessions] });
+  return session.id;
+}
+
+function patchFormation(sessionId: string, patch: (f: FormationSession) => FormationSession): void {
+  setState({
+    ...state,
+    formationSessions: state.formationSessions.map((f) =>
+      f.id === sessionId ? { ...patch(f), updatedAt: now() } : f,
+    ),
+  });
+}
+
+/**
+ * Write the reflection. Immutable once set — a non-empty reflection is never
+ * silently overwritten (mirrors the append-only spirit of the rest of LifeOS).
+ * Later thinking goes into follow-up reflections or a new session.
+ */
+export function setFormationReflection(sessionId: string, text: string): boolean {
+  const s = state.formationSessions.find((f) => f.id === sessionId);
+  if (!s || s.reflection.trim().length > 0) return false;
+  const body = text.trim();
+  if (!body) return false;
+  patchFormation(sessionId, (f) => ({ ...f, reflection: body, status: "reflecting" }));
+  return true;
+}
+
+/** Edit a session's structured capture arrays + title/prompt (not the reflection). */
+export function setFormationFields(
+  sessionId: string,
+  fields: Partial<Pick<FormationSession,
+    | "title" | "prompt" | "lessons" | "unresolvedQuestions" | "emotionalObservations"
+    | "revisedAssumptions" | "beliefCandidates" | "followUpReflections" | "sensitive" | "customType">>,
+): void {
+  patchFormation(sessionId, (f) => ({ ...f, ...fields }));
+}
+
+export function setFormationStatus(sessionId: string, status: FormationSessionStatus): void {
+  patchFormation(sessionId, (f) => ({ ...f, status }));
+}
+
+/** Add/remove an explicit link to another record. Deduped. */
+export function toggleFormationLink(
+  sessionId: string,
+  field: "linkedDecisions" | "linkedBeliefs" | "linkedPractices" | "linkedThreads" | "linkedInquiries" | "linkedSources" | "linkedReflections",
+  recordId: string,
+): void {
+  patchFormation(sessionId, (f) => {
+    const has = f[field].includes(recordId);
+    return { ...f, [field]: has ? f[field].filter((x) => x !== recordId) : [...f[field], recordId] };
+  });
+}
+
+/** Store a fresh synthesis, preserving the prior one in append-only history. */
+export function setFormationSynthesis(
+  sessionId: string,
+  synthesis: FormationSynthesisData,
+  meta: {
+    evidence: FormationSession["evidence"];
+    source: "ai" | "mock";
+    coverage: FormationSession["coverage"];
+    partial: boolean;
+    fingerprint: FormationSession["fingerprint"];
+    note?: string;
+  },
+): void {
+  patchFormation(sessionId, (f) => ({
+    ...f,
+    synthesis,
+    synthesisSource: meta.source,
+    evidence: meta.evidence,
+    source: meta.source,
+    aiModel: meta.source === "ai" ? (process.env.NEXT_PUBLIC_ANTHROPIC_MODEL ?? "anthropic") : "mock",
+    coverage: meta.coverage,
+    partial: meta.partial,
+    status: f.status === "closed" ? "closed" : "synthesized",
+    fingerprint: meta.fingerprint,
+    history: f.synthesis
+      ? [...f.history, { at: f.updatedAt, synthesis: f.synthesis, source: f.synthesisSource ?? f.source, note: meta.note }]
+      : f.history,
+  }));
+}
+
+/** Append a human verdict on one synthesis insight (append-only). */
+export function judgeFormationInsight(
+  sessionId: string,
+  insightRef: string,
+  decision: ComparisonDecision,
+  note?: string,
+): void {
+  const at = now();
+  patchFormation(sessionId, (f) => ({
+    ...f,
+    judgments: [...f.judgments, { insightRef, decision, at, ...(note ? { note } : {}) }],
+  }));
+}
+
+/** Attach a reflection to a Megathread (adds a note + logs a thread revision). */
+export function attachFormationToThread(sessionId: string, threadId: string): void {
+  const s = state.formationSessions.find((x) => x.id === sessionId);
+  if (!s) return;
+  const at = now();
+  const note = `Reflection attached: ${s.title}`;
+  setState({
+    ...state,
+    megathreads: state.megathreads.map((t) =>
+      t.id === threadId
+        ? { ...t, notes: [t.notes, note].filter(Boolean).join("\n"), revisions: [...t.revisions, { at, note }], updatedAt: at }
+        : t,
+    ),
+    formationSessions: state.formationSessions.map((f) =>
+      f.id === sessionId && !f.linkedThreads.includes(threadId)
+        ? { ...f, linkedThreads: [...f.linkedThreads, threadId], updatedAt: at }
+        : f,
+    ),
+  });
+}
+
+export function formationSessionById(s: StoreState, sessionId: string): FormationSession | undefined {
+  return s.formationSessions.find((f) => f.id === sessionId);
 }

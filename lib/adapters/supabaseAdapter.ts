@@ -19,6 +19,7 @@ import type {
   Comparison,
   Decision,
   EmbeddingRecord,
+  FormationSession,
   Inquiry,
   Megathread,
   PracticeCandidate,
@@ -53,7 +54,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -72,6 +73,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("reasonings").select("*").order("created_at", { ascending: false }),
         this.client.from("embeddings").select("*"),
         this.client.from("decisions").select("*").order("created_at", { ascending: false }),
+        this.client.from("formation_sessions").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -91,7 +93,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       reviews.error ||
       reasonings.error ||
       embeddings.error ||
-      decisions.error;
+      decisions.error ||
+      formationSessions.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -122,6 +125,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       reasonings: (reasonings.data ?? []).map(rowToReasoning),
       embeddings: (embeddings.data ?? []).map(rowToEmbedding),
       decisions: (decisions.data ?? []).map(rowToDecision),
+      formationSessions: (formationSessions.data ?? []).map(rowToFormationSession),
     };
   }
 
@@ -185,6 +189,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (state.decisions.length) {
       await this.throwing(this.client.from("decisions").upsert(state.decisions.map(decisionToRow)));
     }
+    if (state.formationSessions.length) {
+      await this.throwing(this.client.from("formation_sessions").upsert(state.formationSessions.map(formationSessionToRow)));
+    }
     this.lastState = "synced";
     this.lastError = undefined;
   }
@@ -247,6 +254,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("formation_sessions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("decisions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("embeddings").delete().eq("user_id", uid));
     await this.throwing(this.client.from("reasonings").delete().eq("user_id", uid));
@@ -781,6 +789,87 @@ function rowToDecision(r: any): Decision {
     verified: Boolean(r.verified),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+  };
+}
+
+function formationSessionToRow(f: FormationSession) {
+  return {
+    id: f.id,
+    title: f.title,
+    type: f.type,
+    custom_type: f.customType ?? null,
+    prompt: f.prompt,
+    suggested_prompts: f.suggestedPrompts,
+    reflection: f.reflection,
+    linked_decisions: f.linkedDecisions,
+    linked_beliefs: f.linkedBeliefs,
+    linked_practices: f.linkedPractices,
+    linked_threads: f.linkedThreads,
+    linked_inquiries: f.linkedInquiries,
+    linked_sources: f.linkedSources,
+    linked_reflections: f.linkedReflections,
+    seed_refs: f.seedRefs,
+    lessons: f.lessons,
+    unresolved_questions: f.unresolvedQuestions,
+    emotional_observations: f.emotionalObservations,
+    revised_assumptions: f.revisedAssumptions,
+    belief_candidates: f.beliefCandidates,
+    follow_up_reflections: f.followUpReflections,
+    evidence: f.evidence,
+    synthesis: f.synthesis ?? null,
+    synthesis_source: f.synthesisSource ?? null,
+    history: f.history,
+    fingerprint: f.fingerprint ?? null,
+    judgments: f.judgments,
+    status: f.status,
+    sensitive: f.sensitive ?? null,
+    ai_model: f.aiModel,
+    source: f.source,
+    coverage: f.coverage,
+    partial: f.partial,
+    verified: f.verified,
+    created_at: f.createdAt,
+    updated_at: f.updatedAt,
+  };
+}
+function rowToFormationSession(r: any): FormationSession {
+  return {
+    id: r.id,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    title: r.title ?? "",
+    type: (r.type ?? "open") as FormationSession["type"],
+    customType: r.custom_type ?? undefined,
+    prompt: r.prompt ?? "",
+    suggestedPrompts: (r.suggested_prompts ?? []) as string[],
+    reflection: r.reflection ?? "",
+    linkedDecisions: (r.linked_decisions ?? []) as string[],
+    linkedBeliefs: (r.linked_beliefs ?? []) as string[],
+    linkedPractices: (r.linked_practices ?? []) as string[],
+    linkedThreads: (r.linked_threads ?? []) as string[],
+    linkedInquiries: (r.linked_inquiries ?? []) as string[],
+    linkedSources: (r.linked_sources ?? []) as string[],
+    linkedReflections: (r.linked_reflections ?? []) as string[],
+    seedRefs: (r.seed_refs ?? []) as string[],
+    lessons: (r.lessons ?? []) as string[],
+    unresolvedQuestions: (r.unresolved_questions ?? []) as string[],
+    emotionalObservations: (r.emotional_observations ?? []) as string[],
+    revisedAssumptions: (r.revised_assumptions ?? []) as string[],
+    beliefCandidates: (r.belief_candidates ?? []) as string[],
+    followUpReflections: (r.follow_up_reflections ?? []) as string[],
+    evidence: (r.evidence ?? []) as FormationSession["evidence"],
+    synthesis: (r.synthesis ?? undefined) as FormationSession["synthesis"],
+    synthesisSource: (r.synthesis_source ?? undefined) as FormationSession["synthesisSource"],
+    history: (r.history ?? []) as FormationSession["history"],
+    fingerprint: (r.fingerprint ?? undefined) as FormationSession["fingerprint"],
+    judgments: (r.judgments ?? []) as FormationSession["judgments"],
+    status: (r.status ?? "draft") as FormationSession["status"],
+    sensitive: r.sensitive ?? undefined,
+    aiModel: r.ai_model ?? "mock",
+    source: (r.source ?? "mock") as FormationSession["source"],
+    coverage: r.coverage ?? null,
+    partial: Boolean(r.partial),
+    verified: Boolean(r.verified),
   };
 }
 

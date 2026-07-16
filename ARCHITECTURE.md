@@ -452,6 +452,65 @@ Constitution, and no medical/legal/financial-trading conclusions.
   `0011_decision_intelligence.sql`, own-rows RLS). Entry points: Nav,
   Constitution, Megathreads, Reasoning, Review.
 
+## Reflective practice & daily formation (LIFEOS-017 — implemented)
+
+A place the user returns to in order to examine themselves, integrate
+experience, and grow — the bridge between **knowledge → experience →
+reflection → belief revision → character**. Not productivity, not task
+management, not streaks or habit gamification. LifeOS asks and clarifies;
+**it never concludes for the user**, and nothing here changes the
+Constitution, a decision, or a thread automatically.
+
+- **Record** (`FormationSession`). A typed session (morning / evening /
+  decision review / book integration / conversation review / failure /
+  success analysis / conflict / practice reflection / open / **custom**),
+  its generated prompt set, an **immutable** reflection body, explicit links
+  to decisions/beliefs/practices/threads/inquiries/sources/reflections,
+  user-authored structured capture (lessons, unresolved questions, emotional
+  observations, revised assumptions, belief candidates, follow-up
+  reflections), an evidence packet (references — never text copies), a
+  validated cited synthesis with append-only `history`, append-only
+  judgments, a freshness fingerprint, and a status.
+- **Reflection engine** (`lib/formation/prompts.ts`). Deterministic, offline
+  prompt generation drawn from the user's OWN knowledge — questioned beliefs,
+  recent revisions, unresolved inquiries, aging decisions, fast-growing
+  threads — tuned per session type. Prompts EXAMINE ("What surprised you?",
+  "What assumption changed?", "What are you avoiding?"); never productivity or
+  streaks.
+- **Evidence** (`lib/formation/sessionEvidence.ts`). A capped packet (≤40)
+  ranked by lexical overlap + local semantic similarity across beliefs,
+  reflections, accepted practices, sources, threads, inquiries, and decisions;
+  linked records and entry-point seeds are force-included; evidence ids ARE
+  real record ids; missing data is never treated as fact.
+- **Synthesis** (`formation_synthesis`). One structured call, deterministic
+  extraction first. Returns themes, recurring tensions, possible belief
+  revisions (grounded — MUST cite), decision/inquiry/thread follow-ups,
+  possible practices, questions worth revisiting, items needing evidence, and
+  limitations. Validation (`lib/formation/sessionSchema.ts`) drops uncited
+  belief-revision suggestions (flagged) and softens away moralizing ("you
+  should", "you failed") and false-certainty ("this proves") language — a
+  synthesis surfaces possibilities, never verdicts. Honest mock offline.
+- **Timeline** (`lib/formation/timeline.ts`, Phase 6). A DERIVED, read-only,
+  chronological, deduped view of reflections, belief revisions, decisions +
+  outcome reviews, inquiries, practice changes, and new threads. Built fresh
+  each render; never stored, never editable.
+- **Cadence** (`lib/formation/cadence.ts`, Phase 7). Five horizons — Today /
+  This Week / This Month / This Year / Life — surfacing changes, unfinished
+  thinking, stale decisions, aging inquiries, un-revisited beliefs, and
+  fast-growing threads. Every item carries an explicit, gentle invitation;
+  nothing is a notification, nothing is urgent.
+- **Human control.** Every synthesis insight is judgeable (Accept → Belief
+  Inbox / Question / Set aside); belief candidates promote to the Inbox only
+  by explicit action; reflections attach to Megathreads and unresolved
+  questions become inquiries only when the user chooses. Sensitive topics get
+  the same calm caution as decisions.
+- **Freshness + rerun.** The fingerprint covers the evidence records AND a
+  `formation-config:` dep (the reflection + structured capture), so "your
+  reflection changed" surfaces alongside "belief was revised". Rerun preserves
+  prior syntheses in history. Persisted as `formation_sessions` (migration
+  `0012_reflective_practice.sql`, own-rows RLS). Entry points: Nav (Reflect),
+  Constitution, Megathreads, Decisions, Inquiry, Library, Review.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

@@ -21,6 +21,7 @@ import { mockThreadSynthesis } from "@/lib/mockThreadSynthesis";
 import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFormation";
 import { mockReasoning } from "@/lib/mockReasoning";
 import { mockDecision, type MockDecisionContext } from "@/lib/mockDecision";
+import { mockFormationSynthesis, type MockFormationContext } from "@/lib/mockFormationSession";
 import type { EvidenceItem } from "@/types/mvp";
 
 export type AiSource = "ai" | "mock";
@@ -221,5 +222,20 @@ export function verifyDecision(evidence: EvidenceItem[], draft: unknown) {
   return call<{ cautions?: string[]; removeStatements?: string[] }>(
     { task: "decision_verify", evidence: toWire(evidence), draft: JSON.stringify(draft) },
     () => ({ cautions: [], removeStatements: [] }),
+  );
+}
+
+// ---------- Reflective practice & formation (LIFEOS-017) ----------
+
+/** One structured formation-synthesis call over a reflection. RAW object (validated by caller). */
+export function formationSynthesis(args: { evidence: EvidenceItem[]; context: MockFormationContext; reflection: string }) {
+  return call<unknown>(
+    {
+      task: "formation_synthesis",
+      evidence: toWire(args.evidence),
+      text: args.reflection,
+      draft: JSON.stringify(args.context),
+    },
+    () => mockFormationSynthesis({ evidence: args.evidence, context: args.context }),
   );
 }
