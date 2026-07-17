@@ -53,11 +53,20 @@ import type {
   FormationSessionStatus,
   FormationSessionType,
   FormationSynthesisData,
+  Concept,
+  ConceptRelationship,
+  ConceptRelationshipType,
+  ConceptStatus,
+  Framework,
+  FrameworkKind,
+  Principle,
+  RelationshipConfidence,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
 import { clearState, loadState, saveLocalOnly, saveState } from "@/lib/persistence";
-import { makeFingerprint, threadDeps, weeklyDeps } from "@/lib/freshness/fingerprint";
+import { makeFingerprint, threadDeps, weeklyDeps, conceptDeps } from "@/lib/freshness/fingerprint";
+import { structuralMapping, slotField } from "@/lib/world/relationships";
 
 /** Stable empty state — used for the server snapshot and pre-hydration client render. */
 const EMPTY_STATE: StoreState = {
@@ -76,6 +85,10 @@ const EMPTY_STATE: StoreState = {
   embeddings: [],
   decisions: [],
   formationSessions: [],
+  concepts: [],
+  conceptRelationships: [],
+  principles: [],
+  frameworks: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -214,6 +227,39 @@ export function hydrate() {
           history: asArray<FormationSession["history"][number]>(f?.history),
           judgments: asArray<FormationSession["judgments"][number]>(f?.judgments),
         })),
+        concepts: asArray<Concept>(parsed.concepts).map((c) => ({
+          ...c,
+          aliases: asArray<string>(c?.aliases),
+          relatedBeliefs: asArray<string>(c?.relatedBeliefs),
+          relatedThreads: asArray<string>(c?.relatedThreads),
+          relatedSources: asArray<string>(c?.relatedSources),
+          relatedPractices: asArray<string>(c?.relatedPractices),
+          parentConcepts: asArray<string>(c?.parentConcepts),
+          childConcepts: asArray<string>(c?.childConcepts),
+          relatedConcepts: asArray<string>(c?.relatedConcepts),
+          opposingConcepts: asArray<string>(c?.opposingConcepts),
+          principleIds: asArray<string>(c?.principleIds),
+          questions: asArray<string>(c?.questions),
+          history: asArray<Concept["history"][number]>(c?.history),
+        })),
+        conceptRelationships: asArray<ConceptRelationship>(parsed.conceptRelationships).map((r) => ({
+          ...r,
+          citations: asArray<string>(r?.citations),
+          history: asArray<ConceptRelationship["history"][number]>(r?.history),
+        })),
+        principles: asArray<Principle>(parsed.principles).map((p) => ({
+          ...p,
+          conceptIds: asArray<string>(p?.conceptIds),
+          beliefIds: asArray<string>(p?.beliefIds),
+          citations: asArray<string>(p?.citations),
+          history: asArray<Principle["history"][number]>(p?.history),
+        })),
+        frameworks: asArray<Framework>(parsed.frameworks).map((f) => ({
+          ...f,
+          conceptIds: asArray<string>(f?.conceptIds),
+          principleIds: asArray<string>(f?.principleIds),
+          history: asArray<Framework["history"][number]>(f?.history),
+        })),
       };
       emit();
     }
@@ -228,6 +274,7 @@ export function resetStore() {
   setState({
     captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
     comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [], formationSessions: [],
+    concepts: [], conceptRelationships: [], principles: [], frameworks: [],
   });
 }
 
@@ -1451,4 +1498,330 @@ export function attachFormationToThread(sessionId: string, threadId: string): vo
 
 export function formationSessionById(s: StoreState, sessionId: string): FormationSession | undefined {
   return s.formationSessions.find((f) => f.id === sessionId);
+}
+
+// ---------- Worldview & concept graph actions (LIFEOS-018) ----------
+
+/** Create a concept. AI/deterministic proposals only become concepts via this explicit path. */
+export function createConcept(fields: {
+  name: string;
+  definition?: string;
+  description?: string;
+  aliases?: string[];
+  relatedBeliefs?: string[];
+  relatedThreads?: string[];
+  relatedSources?: string[];
+  relatedPractices?: string[];
+  source?: Concept["source"];
+}): string {
+  const at = now();
+  const concept: Concept = {
+    id: id(),
+    name: fields.name.trim() || "Untitled concept",
+    aliases: fields.aliases ?? [],
+    definition: fields.definition?.trim() ?? "",
+    description: fields.description?.trim() ?? "",
+    relatedBeliefs: fields.relatedBeliefs ?? [],
+    relatedThreads: fields.relatedThreads ?? [],
+    relatedSources: fields.relatedSources ?? [],
+    relatedPractices: fields.relatedPractices ?? [],
+    parentConcepts: [],
+    childConcepts: [],
+    relatedConcepts: [],
+    opposingConcepts: [],
+    principleIds: [],
+    questions: [],
+    history: [{ at, kind: "created", note: "Concept created" }],
+    status: "active",
+    source: fields.source ?? "user",
+    createdAt: at,
+    updatedAt: at,
+  };
+  setState({ ...state, concepts: [concept, ...state.concepts] });
+  return concept.id;
+}
+
+function patchConcept(conceptId: string, patch: (c: Concept) => Concept, log?: Concept["history"][number]): void {
+  const at = now();
+  setState({
+    ...state,
+    concepts: state.concepts.map((c) => {
+      if (c.id !== conceptId) return c;
+      const next = patch(c);
+      return { ...next, updatedAt: at, history: log ? [...c.history, { ...log, at }] : next.history };
+    }),
+  });
+}
+
+export function setConceptFields(
+  conceptId: string,
+  fields: Partial<Pick<Concept, "name" | "aliases" | "definition" | "description" | "questions">>,
+): void {
+  const changedDef = fields.definition !== undefined;
+  patchConcept(
+    conceptId,
+    (c) => ({ ...c, ...fields }),
+    changedDef ? { at: "", kind: "definition", note: "Definition revised" } : { at: "", kind: "note", note: "Edited" },
+  );
+}
+
+export function setConceptStatus(conceptId: string, status: ConceptStatus): void {
+  patchConcept(conceptId, (c) => ({ ...c, status }), { at: "", kind: "status", note: `Marked ${status}` });
+}
+
+/** Add/remove a cross-type link (belief/thread/source/practice). Deduped. */
+export function toggleConceptLink(
+  conceptId: string,
+  field: "relatedBeliefs" | "relatedThreads" | "relatedSources" | "relatedPractices",
+  recordId: string,
+): void {
+  patchConcept(
+    conceptId,
+    (c) => {
+      const has = c[field].includes(recordId);
+      return { ...c, [field]: has ? c[field].filter((x) => x !== recordId) : [...c[field], recordId] };
+    },
+    { at: "", kind: "link", note: "Link updated" },
+  );
+}
+
+/** Record that the user has reviewed the concept — sets a fresh evidence fingerprint. */
+export function markConceptReviewed(conceptId: string): void {
+  const c = state.concepts.find((x) => x.id === conceptId);
+  if (!c) return;
+  patchConcept(conceptId, (cc) => ({ ...cc, fingerprint: makeFingerprint(state, conceptDeps(cc)) }));
+}
+
+/** Attach a principle to a concept (both sides), or detach. */
+export function toggleConceptPrinciple(conceptId: string, principleId: string): void {
+  const c = state.concepts.find((x) => x.id === conceptId);
+  if (!c) return;
+  const has = c.principleIds.includes(principleId);
+  setState({
+    ...state,
+    concepts: state.concepts.map((x) =>
+      x.id === conceptId
+        ? { ...x, principleIds: has ? x.principleIds.filter((p) => p !== principleId) : [...x.principleIds, principleId], updatedAt: now(), history: [...x.history, { at: now(), kind: "principle", note: has ? "Principle detached" : "Principle attached" }] }
+        : x,
+    ),
+    principles: state.principles.map((p) =>
+      p.id === principleId
+        ? { ...p, conceptIds: has ? p.conceptIds.filter((cid) => cid !== conceptId) : [...new Set([...p.conceptIds, conceptId])], updatedAt: now() }
+        : p,
+    ),
+  });
+}
+
+export function conceptById(s: StoreState, conceptId: string): Concept | undefined {
+  return s.concepts.find((c) => c.id === conceptId);
+}
+
+// ---- relationships (proposed → human-approved) ----
+
+/** Propose a relationship. It is NOT part of the graph until a human approves. */
+export function proposeConceptRelationship(fields: {
+  fromConceptId: string;
+  toConceptId: string;
+  type: ConceptRelationshipType;
+  reason: string;
+  citations?: string[];
+  confidence?: RelationshipConfidence;
+  source?: ConceptRelationship["source"];
+  approved?: boolean;
+}): string {
+  const at = now();
+  const rel: ConceptRelationship = {
+    id: id(),
+    fromConceptId: fields.fromConceptId,
+    toConceptId: fields.toConceptId,
+    type: fields.type,
+    reason: fields.reason.trim(),
+    citations: fields.citations ?? [],
+    confidence: fields.confidence ?? "medium",
+    source: fields.source ?? "user",
+    approved: false,
+    createdAt: at,
+    updatedAt: at,
+    history: [{ at, note: "Proposed" }],
+  };
+  setState({ ...state, conceptRelationships: [rel, ...state.conceptRelationships] });
+  // A user-created relationship marked approved is approved immediately.
+  if (fields.approved) approveConceptRelationship(rel.id);
+  return rel.id;
+}
+
+/** Write a relationship's structural mapping onto both concepts (add or remove). */
+function applyStructural(rel: ConceptRelationship, add: boolean): void {
+  const { fromSlot, toSlot } = structuralMapping(rel.type);
+  const fromField = slotField(fromSlot);
+  const toField = slotField(toSlot);
+  setState({
+    ...state,
+    concepts: state.concepts.map((c) => {
+      if (c.id === rel.fromConceptId) {
+        const cur = c[fromField];
+        const next = add ? [...new Set([...cur, rel.toConceptId])] : cur.filter((x) => x !== rel.toConceptId);
+        return { ...c, [fromField]: next, updatedAt: now(), history: [...c.history, { at: now(), kind: "relationship", note: `${add ? "Linked" : "Unlinked"} (${rel.type})` }] };
+      }
+      if (c.id === rel.toConceptId) {
+        const cur = c[toField];
+        const next = add ? [...new Set([...cur, rel.fromConceptId])] : cur.filter((x) => x !== rel.fromConceptId);
+        return { ...c, [toField]: next, updatedAt: now() };
+      }
+      return c;
+    }),
+  });
+}
+
+/** Approve a proposed relationship — the ONLY way an edge enters the graph. */
+export function approveConceptRelationship(relId: string): void {
+  const rel = state.conceptRelationships.find((r) => r.id === relId);
+  if (!rel || rel.approved) return;
+  const at = now();
+  setState({
+    ...state,
+    conceptRelationships: state.conceptRelationships.map((r) =>
+      r.id === relId ? { ...r, approved: true, updatedAt: at, history: [...r.history, { at, note: "Approved by you" }] } : r,
+    ),
+  });
+  applyStructural({ ...rel, approved: true }, true);
+}
+
+export function editConceptRelationship(
+  relId: string,
+  fields: Partial<Pick<ConceptRelationship, "type" | "reason" | "confidence" | "citations">>,
+): void {
+  setState({
+    ...state,
+    conceptRelationships: state.conceptRelationships.map((r) =>
+      r.id === relId ? { ...r, ...fields, updatedAt: now(), history: [...r.history, { at: now(), note: "Edited" }] } : r,
+    ),
+  });
+}
+
+/** Remove a relationship. If it was approved, also unwind its structural mapping. */
+export function removeConceptRelationship(relId: string): void {
+  const rel = state.conceptRelationships.find((r) => r.id === relId);
+  if (!rel) return;
+  if (rel.approved) applyStructural(rel, false);
+  setState({ ...state, conceptRelationships: state.conceptRelationships.filter((r) => r.id !== relId) });
+}
+
+export function relationshipById(s: StoreState, relId: string): ConceptRelationship | undefined {
+  return s.conceptRelationships.find((r) => r.id === relId);
+}
+
+// ---- principles ----
+
+export function createPrinciple(fields: {
+  statement: string;
+  description?: string;
+  conceptIds?: string[];
+  beliefIds?: string[];
+  citations?: string[];
+  source?: Principle["source"];
+}): string {
+  const at = now();
+  const principle: Principle = {
+    id: id(),
+    statement: fields.statement.trim(),
+    description: fields.description?.trim() || undefined,
+    conceptIds: fields.conceptIds ?? [],
+    beliefIds: fields.beliefIds ?? [],
+    citations: fields.citations ?? [],
+    status: "active",
+    history: [{ at, note: "Principle created" }],
+    source: fields.source ?? "user",
+    createdAt: at,
+    updatedAt: at,
+  };
+  setState({ ...state, principles: [principle, ...state.principles] });
+  return principle.id;
+}
+
+function patchPrinciple(principleId: string, patch: (p: Principle) => Principle, note?: string): void {
+  const at = now();
+  setState({
+    ...state,
+    principles: state.principles.map((p) =>
+      p.id === principleId ? { ...patch(p), updatedAt: at, history: note ? [...p.history, { at, note }] : patch(p).history } : p,
+    ),
+  });
+}
+
+export function setPrincipleFields(principleId: string, fields: Partial<Pick<Principle, "statement" | "description" | "status">>): void {
+  patchPrinciple(principleId, (p) => ({ ...p, ...fields }), "Edited");
+}
+
+/** Toggle a belief that derives from this principle (many-to-many). */
+export function togglePrincipleBelief(principleId: string, beliefId: string): void {
+  patchPrinciple(principleId, (p) => {
+    const has = p.beliefIds.includes(beliefId);
+    return { ...p, beliefIds: has ? p.beliefIds.filter((b) => b !== beliefId) : [...p.beliefIds, beliefId] };
+  }, "Belief link updated");
+}
+
+export function principleById(s: StoreState, principleId: string): Principle | undefined {
+  return s.principles.find((p) => p.id === principleId);
+}
+
+// ---- frameworks (organize, never own beliefs) ----
+
+export function createFramework(fields: {
+  name: string;
+  kind: FrameworkKind;
+  description?: string;
+  conceptIds?: string[];
+  principleIds?: string[];
+  source?: Framework["source"];
+}): string {
+  const at = now();
+  const framework: Framework = {
+    id: id(),
+    name: fields.name.trim() || "Untitled framework",
+    kind: fields.kind,
+    description: fields.description?.trim() ?? "",
+    conceptIds: fields.conceptIds ?? [],
+    principleIds: fields.principleIds ?? [],
+    status: "active",
+    history: [{ at, note: `${fields.kind} created` }],
+    source: fields.source ?? "user",
+    createdAt: at,
+    updatedAt: at,
+  };
+  setState({ ...state, frameworks: [framework, ...state.frameworks] });
+  return framework.id;
+}
+
+function patchFramework(frameworkId: string, patch: (f: Framework) => Framework, note?: string): void {
+  const at = now();
+  setState({
+    ...state,
+    frameworks: state.frameworks.map((f) =>
+      f.id === frameworkId ? { ...patch(f), updatedAt: at, history: note ? [...f.history, { at, note }] : patch(f).history } : f,
+    ),
+  });
+}
+
+export function setFrameworkFields(frameworkId: string, fields: Partial<Pick<Framework, "name" | "description" | "status">>): void {
+  patchFramework(frameworkId, (f) => ({ ...f, ...fields }), "Edited");
+}
+
+/** Add/remove a concept from a framework (append-only membership history). */
+export function toggleFrameworkConcept(frameworkId: string, conceptId: string): void {
+  patchFramework(frameworkId, (f) => {
+    const has = f.conceptIds.includes(conceptId);
+    return { ...f, conceptIds: has ? f.conceptIds.filter((c) => c !== conceptId) : [...f.conceptIds, conceptId] };
+  }, "Concept membership changed");
+}
+
+export function toggleFrameworkPrinciple(frameworkId: string, principleId: string): void {
+  patchFramework(frameworkId, (f) => {
+    const has = f.principleIds.includes(principleId);
+    return { ...f, principleIds: has ? f.principleIds.filter((p) => p !== principleId) : [...f.principleIds, principleId] };
+  }, "Principle membership changed");
+}
+
+export function frameworkById(s: StoreState, frameworkId: string): Framework | undefined {
+  return s.frameworks.find((f) => f.id === frameworkId);
 }

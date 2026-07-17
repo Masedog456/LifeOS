@@ -106,6 +106,12 @@ export default function ThreadDetailPage() {
           >
             Reflect on this thread →
           </Link>
+          <Link
+            href={`/world?tab=Concepts&name=${encodeURIComponent(thread.title.slice(0, 40))}`}
+            className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+          >
+            Model as a concept →
+          </Link>
         </div>
       </div>
 

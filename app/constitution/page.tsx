@@ -149,6 +149,12 @@ function BeliefRow({ belief }: { belief: Belief }) {
             >
               Reflect on this →
             </Link>
+            <Link
+              href={`/world?tab=Concepts&name=${encodeURIComponent(belief.theme || belief.text.slice(0, 40))}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Model as a concept →
+            </Link>
           </div>
 
           {/* Related evidence — collapsed, never auto-resolving */}

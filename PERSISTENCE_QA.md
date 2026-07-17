@@ -96,7 +96,21 @@
     0001–0011, existing rows, other tables, or their RLS. Nothing here changes
     the Constitution, a decision, or a thread automatically — every promotion
     (belief → Inbox, attach-to-thread, new inquiry) is an explicit user action.
-13. **Project Settings → API**: copy the **Project URL** and the **anon
+13. Then run `supabase/migrations/0013_world_model.sql` (LIFEOS-018 — four
+    tables modeling the user's understanding of reality: `concepts`,
+    `concept_relationships`, `principles`, and `frameworks`. Concepts carry a
+    definition/description/aliases, cross-type links (beliefs/threads/sources/
+    practices), denormalized concept↔concept structure, principle links, open
+    questions, append-only history, and a fingerprint. Relationships are
+    first-class edges with reason/citations/confidence/source and an `approved`
+    flag — they only shape the graph after a human approves. Principles are
+    reusable and many-to-many with beliefs and concepts; frameworks ORGANIZE
+    concepts and principles but never own beliefs. Own-rows RLS with full CRUD
+    on every table). Additive and rerunnable; it does not touch migrations
+    0001–0012, existing rows, other tables, or their RLS. Deterministic-first
+    and human-reviewed — nothing is inferred silently and nothing changes a
+    belief or the Constitution.
+14. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -268,6 +282,24 @@ changes runtime behavior.
       value leaks into the page. (26/26 automated checks, mock mode.) All prior
       suites still green (decision 34, semantic 19, review, threads, inquiry,
       compare, retrieval, reason, qa3, pdf, long-source).
+- [x] **Worldview & concept graph (LIFEOS-018):** concepts are created and
+      listed; a concept's definition/description/aliases/questions save with
+      append-only history; a relationship is proposed and only shapes the graph
+      after explicit approval, editable and removable; cross-type links to
+      beliefs/threads/sources/practices toggle; the concept freshness badge
+      resolves and "review" records a fresh fingerprint (no AI); tensions
+      surface deterministically (isolated, unsupported, and duplicate concepts
+      detected; nothing auto-resolves); the Review panel runs one proposal pass
+      (deterministic-first) labeling AI/mock provenance and every proposal is
+      reviewable — creating a concept/principle/framework only by explicit
+      action; frameworks organize concepts without owning beliefs; principles
+      are created and many-to-many with beliefs/concepts; the world timeline is
+      derived + read-only; concepts persist after refresh; entry points from
+      Constitution ("Model as a concept") and Threads open the workspace; no
+      secret value leaks into the page. (21/21 automated checks, mock mode.)
+      All prior suites still green (formation 26, decision 34, semantic 19,
+      review, threads, inquiry, compare, retrieval, reason, qa3, pdf,
+      long-source).
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption

@@ -1277,6 +1277,188 @@ export interface FormationTimelineItem {
   href?: string;
 }
 
+// ---------- Worldview & concept graph (LIFEOS-018) ----------
+
+export type ConceptStatus = "proposed" | "active" | "archived" | "merged";
+
+/** One append-only change to a concept — how understanding evolves (Phase 8). */
+export interface ConceptHistoryEntry {
+  at: ISO;
+  kind: "created" | "definition" | "relationship" | "principle" | "framework" | "link" | "status" | "note";
+  note: string;
+}
+
+/**
+ * A concept the user is modeling — a node in their evolving understanding of
+ * reality. Concept↔concept structure (parent/child/related/opposing) is
+ * denormalized here but maintained ONLY through APPROVED `ConceptRelationship`s,
+ * so nothing is inferred silently. Cross-type links (beliefs/threads/sources/
+ * practices) are direct human-added references. Not a visualization; not an
+ * embedding.
+ */
+export interface Concept {
+  id: string;
+  name: string;
+  aliases: string[];
+  definition: string;
+  description: string;
+  // ---- cross-type links (human-added references) ----
+  relatedBeliefs: string[];
+  relatedThreads: string[];
+  relatedSources: string[];
+  relatedPractices: string[];
+  // ---- concept graph (derived from approved relationships) ----
+  parentConcepts: string[];
+  childConcepts: string[];
+  relatedConcepts: string[];
+  opposingConcepts: string[];
+  // ---- principles + open questions ----
+  principleIds: string[];
+  questions: string[];
+  history: ConceptHistoryEntry[];
+  status: ConceptStatus;
+  fingerprint?: SavedFingerprint;
+  /** Provenance of the concept's creation. */
+  source: "user" | "ai" | "mock" | "deterministic";
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
+/** The 12 supported relationship types (Phase 3). */
+export type ConceptRelationshipType =
+  | "supports"
+  | "depends_on"
+  | "contradicts"
+  | "extends"
+  | "refines"
+  | "contains"
+  | "requires"
+  | "explains"
+  | "analogous_to"
+  | "historically_related"
+  | "terminologically_related"
+  | "part_of";
+
+export type RelationshipConfidence = "low" | "medium" | "high";
+
+/**
+ * A first-class, richly-annotated edge between two concepts. Proposed edges
+ * stay `approved: false` and never touch the concepts' structural arrays until
+ * a human approves — nothing is inferred silently (Phase 3).
+ */
+export interface ConceptRelationship {
+  id: string;
+  fromConceptId: string;
+  toConceptId: string;
+  type: ConceptRelationshipType;
+  /** Why this relationship holds — always required. */
+  reason: string;
+  /** Evidence/record ids grounding it. */
+  citations: string[];
+  confidence: RelationshipConfidence;
+  /** Where the proposal came from. */
+  source: "user" | "ai" | "mock" | "deterministic";
+  /** False until a human approves; only approved edges shape the graph. */
+  approved: boolean;
+  createdAt: ISO;
+  updatedAt: ISO;
+  /** Append-only change log. */
+  history: { at: ISO; note: string }[];
+}
+
+/**
+ * A reusable principle (Phase 6). Many-to-many with beliefs and concepts:
+ * principles support many beliefs; beliefs derive from many principles.
+ */
+export interface Principle {
+  id: string;
+  statement: string;
+  description?: string;
+  conceptIds: string[];
+  /** Beliefs the user says derive from this principle (references, not owned). */
+  beliefIds: string[];
+  citations: string[];
+  status: "proposed" | "active" | "archived";
+  history: { at: ISO; note: string }[];
+  source: "user" | "ai" | "mock" | "deterministic";
+  fingerprint?: SavedFingerprint;
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
+export type FrameworkKind = "framework" | "tradition" | "school" | "paradigm" | "map";
+
+/**
+ * A worldview layer (Phase 5) — a framework/tradition/school/paradigm/map that
+ * ORGANIZES concepts and principles. Frameworks never OWN beliefs; they only
+ * organize them (a framework references concepts, which connect to beliefs).
+ */
+export interface Framework {
+  id: string;
+  name: string;
+  kind: FrameworkKind;
+  description: string;
+  conceptIds: string[];
+  principleIds: string[];
+  status: "active" | "archived";
+  /** Append-only membership history (Phase 8). */
+  history: { at: ISO; note: string }[];
+  source: "user" | "ai" | "mock" | "deterministic";
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
+/** One AI/deterministic proposal awaiting human review (Phase 4). */
+export type WorldProposalKind =
+  | "new_concept"
+  | "missing_link"
+  | "duplicate_concept"
+  | "missing_definition"
+  | "possible_principle"
+  | "worldview_cluster";
+
+export interface WorldProposal {
+  kind: WorldProposalKind;
+  /** Human-readable summary of the proposal. */
+  statement: string;
+  /** Concept names / ids involved (as applicable). */
+  concepts: string[];
+  /** For missing_link: the suggested relationship type. */
+  relationshipType?: ConceptRelationshipType;
+  /** Suggested definition (missing_definition) or principle text. */
+  suggestion?: string;
+  citations: string[];
+}
+
+/** A detected tension — surfaced deterministically, never auto-resolved (Phase 7). */
+export type TensionKind =
+  | "isolated_concept"
+  | "unsupported_concept"
+  | "duplicate_concept"
+  | "circular_definition"
+  | "contradictory_principle"
+  | "framework_overlap";
+
+export interface WorldTension {
+  id: string;
+  kind: TensionKind;
+  title: string;
+  /** Why this surfaced — always shown. */
+  detail: string;
+  conceptIds: string[];
+  href?: string;
+}
+
+/** A derived, read-only concept-evolution timeline event (Phase 8). */
+export interface WorldTimelineItem {
+  id: string;
+  at: ISO;
+  kind: ConceptHistoryEntry["kind"] | "relationship_approved" | "framework" | "principle";
+  title: string;
+  detail?: string;
+  href?: string;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -1293,4 +1475,8 @@ export interface StoreState {
   embeddings: EmbeddingRecord[];
   decisions: Decision[];
   formationSessions: FormationSession[];
+  concepts: Concept[];
+  conceptRelationships: ConceptRelationship[];
+  principles: Principle[];
+  frameworks: Framework[];
 }
