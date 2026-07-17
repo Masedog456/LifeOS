@@ -16,6 +16,7 @@ const LINKS = [
   { href: "/decisions", label: "Decide" },
   { href: "/formation", label: "Reflect" },
   { href: "/world", label: "World" },
+  { href: "/author", label: "Author" },
   { href: "/review", label: "Review" },
   { href: "/inbox", label: "Inbox" },
   { href: "/constitution", label: "Constitution" },

@@ -110,7 +110,18 @@
     0001–0012, existing rows, other tables, or their RLS. Deterministic-first
     and human-reviewed — nothing is inferred silently and nothing changes a
     belief or the Constitution.
-14. **Project Settings → API**: copy the **Project URL** and the **anon
+14. Then run `supabase/migrations/0014_authoring_engine.sql` (LIFEOS-019 — the
+    `knowledge_projects` table: one jsonb-bearing row per authoring project with
+    the project's `assembly` (chosen evidence ids across every record type —
+    references, never copies), generated `outline_options`, the chosen outline,
+    `sections` (each with paragraph-level citations and append-only version
+    history), an append-only project change log, and a freshness fingerprint;
+    own-rows RLS with full CRUD). Additive and rerunnable; it does not touch
+    migrations 0001–0013, existing rows, other tables, or their RLS.
+    Evidence-first and human-directed — the app assembles evidence, proposes
+    outlines, and drafts one section at a time on request; it never writes
+    autonomously and never invents a citation.
+15. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -300,6 +311,25 @@ changes runtime behavior.
       All prior suites still green (formation 26, decision 34, semantic 19,
       review, threads, inquiry, compare, retrieval, reason, qa3, pdf,
       long-source).
+- [x] **Knowledge synthesis & authoring (LIFEOS-019):** a project is created
+      for any kind (book/essay/lecture/course/paper/blog/guide/philosophy);
+      evidence is assembled across every record type with provenance; multiple
+      outline candidates are generated (deterministic + AI/mock) and the human
+      chooses one, which seeds sections; a section drafts one at a time from the
+      assembled evidence with paragraph-level citation chips; unsupported
+      paragraphs are flagged and removable; transforms (rewrite/expand/compress/
+      clarify + academic/popular/technical/conversational) re-draft one section,
+      pushing the prior into append-only version history; cross-references
+      surface deterministically and are labelled suggestion-only (never
+      inserted); citation coverage + unsupported counts render; deterministic
+      export to Markdown, HTML, DOCX, and PDF all download with valid signatures
+      (# / <!doctype html> / ZIP "PK" with word/document.xml / %PDF- with
+      trailer) and preserve citations as a numbered reference list; projects
+      persist after refresh; entry point from Threads ("Write from this thread");
+      no secret value leaks into the page. (23/23 automated checks incl. export
+      byte verification, mock mode.) All prior suites still green (world 21,
+      formation 26, decision 34, semantic 19, review, threads, inquiry, compare,
+      retrieval, reason, qa3, pdf, long-source).
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption

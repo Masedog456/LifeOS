@@ -162,6 +162,14 @@ export function conceptDeps(c: import("@/types/mvp").Concept): string[] {
     `concept-config:${c.id}`,
   ];
 }
+/** Authoring-project deps: every assembled evidence record (across all types). */
+export function projectDeps(p: import("@/types/mvp").KnowledgeProject): string[] {
+  const a = p.assembly;
+  return [
+    ...a.sourceIds, ...a.beliefIds, ...a.conceptIds, ...a.threadIds, ...a.reasoningIds,
+    ...a.frameworkIds, ...a.principleIds, ...a.formationIds, ...a.decisionIds,
+  ];
+}
 
 const KIND_NOUN: Record<string, [string, string]> = {
   belief: ["belief was revised", "beliefs were revised"],

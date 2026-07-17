@@ -35,6 +35,7 @@ import { mockReasoning } from "@/lib/mockReasoning";
 import { mockDecision, type MockDecisionContext } from "@/lib/mockDecision";
 import { mockFormationSynthesis, type MockFormationContext } from "@/lib/mockFormationSession";
 import { mockWorld } from "@/lib/mockWorld";
+import { mockOutlines, mockSectionDraft, type MockOutlineContext, type MockSectionContext } from "@/lib/mockAuthoring";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -60,7 +61,9 @@ type Task =
   | "decision_synthesis"
   | "decision_verify"
   | "formation_synthesis"
-  | "concept_extract";
+  | "concept_extract"
+  | "outline_generate"
+  | "section_draft";
 
 const ALLOWED_TASKS = new Set<Task>([
   "beliefs",
@@ -84,6 +87,8 @@ const ALLOWED_TASKS = new Set<Task>([
   "decision_verify",
   "formation_synthesis",
   "concept_extract",
+  "outline_generate",
+  "section_draft",
 ]);
 
 const MAX_INPUT_CHARS = 50_000;
@@ -571,6 +576,76 @@ function conceptExtractPrompt(input: AiInput): string {
   ].join("\n");
 }
 
+function parseOutlineContext(draft: string): MockOutlineContext {
+  try {
+    const o = JSON.parse(draft) as Partial<MockOutlineContext>;
+    return {
+      kind: typeof o.kind === "string" ? o.kind : "essay",
+      title: typeof o.title === "string" ? o.title : "",
+      purpose: typeof o.purpose === "string" ? o.purpose : "",
+      audience: typeof o.audience === "string" ? o.audience : "",
+    };
+  } catch {
+    return { kind: "essay", title: "", purpose: "", audience: "" };
+  }
+}
+
+function parseSectionContext(draft: string): MockSectionContext {
+  try {
+    const o = JSON.parse(draft) as Partial<MockSectionContext> & { existing?: string };
+    return {
+      heading: typeof o.heading === "string" ? o.heading : "",
+      purpose: typeof o.purpose === "string" ? o.purpose : "",
+      transform: typeof o.transform === "string" ? o.transform : undefined,
+    };
+  } catch {
+    return { heading: "", purpose: "" };
+  }
+}
+
+function outlinePrompt(input: AiInput): string {
+  const ctx = parseOutlineContext(input.draft);
+  return [
+    `You are proposing outlines for a ${ctx.kind} titled "${ctx.title}".`,
+    "You do NOT write the work — you propose STRUCTURE the author will choose from.",
+    "Base the outline ONLY on the assembled evidence below; do not invent topics",
+    "the evidence cannot support.",
+    "",
+    ctx.purpose ? `Purpose: ${ctx.purpose}` : "",
+    ctx.audience ? `Audience: ${ctx.audience}` : "",
+    "",
+    "Return ONLY JSON: { \"outlines\": [ { \"title\": string, \"rationale\": string,",
+    "\"sections\": [ { \"heading\": string, \"purpose\": string } ] } ] }",
+    "Propose 1–2 outlines, each 4–10 sections.",
+    "",
+    "Assembled evidence:",
+    evidenceBlock(input.evidence),
+  ].filter(Boolean).join("\n");
+}
+
+function sectionPrompt(input: AiInput): string {
+  const ctx = parseSectionContext(input.draft);
+  return [
+    `You are drafting ONE section — "${ctx.heading}" — of a longer work.`,
+    ctx.purpose ? `The section's purpose: ${ctx.purpose}` : "",
+    ctx.transform ? `Re-draft in this register/operation: ${ctx.transform}.` : "",
+    "",
+    "HARD RULES:",
+    "- Use ONLY the assembled evidence below. Every factual paragraph MUST cite",
+    "  one or more evidence ids in its \"citations\" array. Never cite an id not",
+    "  listed; never invent facts, quotes, or sources.",
+    "- Write in the author's voice, plainly. Do NOT write the whole work — only",
+    "  this section. A short, well-grounded section beats a long, ungrounded one.",
+    "- An opening/framing paragraph may have empty citations, but keep such",
+    "  paragraphs to a minimum.",
+    "",
+    "Return ONLY JSON: { \"paragraphs\": [ { \"text\": string, \"citations\": string[] } ] }",
+    "",
+    "Assembled evidence:",
+    evidenceBlock(input.evidence),
+  ].filter(Boolean).join("\n");
+}
+
 function promptFor(input: AiInput): string {
   const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (input.task) {
@@ -589,6 +664,10 @@ function promptFor(input: AiInput): string {
       return formationPrompt(input);
     case "concept_extract":
       return conceptExtractPrompt(input);
+    case "outline_generate":
+      return outlinePrompt(input);
+    case "section_draft":
+      return sectionPrompt(input);
     case "dialectic":
       return dialecticPrompt(input);
     case "thread_synthesis":
@@ -689,6 +768,10 @@ function mockFor(input: AiInput): unknown {
       return mockFormationSynthesis({ evidence: input.evidence, context: parseFormationContext(input.draft) });
     case "concept_extract":
       return mockWorld({ evidence: input.evidence });
+    case "outline_generate":
+      return mockOutlines({ evidence: input.evidence, context: parseOutlineContext(input.draft) });
+    case "section_draft":
+      return mockSectionDraft({ evidence: input.evidence, context: parseSectionContext(input.draft) });
     case "reasoning_verify":
     case "decision_verify":
       return { cautions: [], removeStatements: [] };
@@ -723,6 +806,8 @@ function parseFor(input: AiInput, raw: string): unknown {
     case "decision_verify":
     case "formation_synthesis":
     case "concept_extract":
+    case "outline_generate":
+    case "section_draft":
       // Return the raw parsed object; strict validation happens client-side
       // (lib/comparison, lib/dialectic, lib/megathread, lib/formation,
       // lib/reasoning, lib/decision).
@@ -739,7 +824,8 @@ function parseFor(input: AiInput, raw: string): unknown {
 function maxTokensFor(task: Task): number {
   // Structured comparison/dialectic/synthesis outputs are large; more room.
   if (task === "dialectic" || task === "decision_synthesis") return 4096;
-  if (task === "compare" || task === "thread_synthesis" || task === "reasoning_synthesis" || task === "formation_synthesis" || task === "concept_extract") return 3072;
+  if (task === "compare" || task === "thread_synthesis" || task === "reasoning_synthesis" || task === "formation_synthesis" || task === "concept_extract" || task === "section_draft") return 3072;
+  if (task === "outline_generate") return 2048;
   return 1024;
 }
 
@@ -828,7 +914,7 @@ export async function POST(request: Request) {
     "compare", "compare_verify", "dialectic", "dialectic_verify", "thread_synthesis",
     "practice_suggest", "weekly_synthesis", "alignment_reflection",
     "reasoning_synthesis", "reasoning_verify", "decision_synthesis", "decision_verify",
-    "formation_synthesis", "concept_extract",
+    "formation_synthesis", "concept_extract", "outline_generate", "section_draft",
   ]);
   const hasInput =
     input.task === "reduce_summary"
