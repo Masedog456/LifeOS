@@ -179,6 +179,14 @@ export function researchDeps(p: import("@/types/mvp").ResearchProject): string[]
     ...p.hypotheses.flatMap((h) => [...h.supportingEvidence, ...h.contradictingEvidence]),
   ];
 }
+/** Dialogue deps: its seed records + each perspective's source + every cited turn. */
+export function dialogueDeps(d: import("@/types/mvp").DialogueSession): string[] {
+  return [
+    ...d.seedRefs,
+    ...d.participants.map((p) => p.refId).filter((x): x is string => Boolean(x)),
+    ...d.turns.flatMap((t) => t.citations),
+  ];
+}
 
 const KIND_NOUN: Record<string, [string, string]> = {
   belief: ["belief was revised", "beliefs were revised"],

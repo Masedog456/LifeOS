@@ -17,6 +17,7 @@ const LINKS = [
   { href: "/formation", label: "Reflect" },
   { href: "/world", label: "World" },
   { href: "/research", label: "Research" },
+  { href: "/dialogue", label: "Dialogue" },
   { href: "/author", label: "Author" },
   { href: "/review", label: "Review" },
   { href: "/inbox", label: "Inbox" },
