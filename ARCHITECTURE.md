@@ -613,6 +613,56 @@ never writes the whole work on its own and never invents a citation.
   outline → draft/transform → citations + cross-refs + history → export). Entry
   points: Nav (Author), Megathreads ("Write from this thread").
 
+## Research workspace (LIFEOS-020 — implemented)
+
+A structured environment to investigate a question BEFORE writing conclusions.
+**Not** autonomous research, **not** web browsing, **not** an agent —
+evidence-first, deterministic-first, human-directed, and (notably) **AI-free**:
+the whole sprint is deterministic, so it adds no `/api/ai` task. Built largely
+by REUSING earlier subsystems rather than duplicating them.
+
+- **Record** (`ResearchProject`). A primary question plus a `questions` layer
+  (subquestions/unknowns/assumptions/definitions/success-criteria/open-problems,
+  each history-bearing — Phase 3), an evidence `assembly` (**reuses** the
+  LIFEOS-019 `ProjectAssembly` + `assembleEvidence` — references across all
+  record types, never copies — Phase 4), project-local `notes`, competing
+  `hypotheses` (Phase 5), an explicit user-authored argument map
+  (`argumentNodes` + `argumentEdges` — Phase 6), an append-only project
+  `history`, a freshness fingerprint, and an optional `seededProjectId`.
+- **Hypotheses** (Phase 5). statement, USER-stated confidence, supporting /
+  contradicting evidence (real record ids), open questions, status. Users hold
+  multiple competing hypotheses; LifeOS never selects a winner.
+- **Argument map** (Phase 6). Nodes (claim/evidence/counterargument/objection/
+  rebuttal/open_question/unknown) and edges (supports/contradicts/objects_to/
+  rebuts/answers/raises/depends_on). Every node and edge is user-authored —
+  reusing the LIFEOS-018 "explicit, nothing inferred" pattern (no approval flow
+  needed since the human creates each one directly).
+- **Gap detection** (`lib/research/gaps.ts`, Phase 8). Deterministic:
+  unsupported claims, missing evidence, contradictory evidence (a record cited
+  both for and against), duplicate evidence, orphan questions, and unresolved
+  hypotheses. Never resolves anything — reuses the tension/cross-ref detector
+  pattern.
+- **Timeline** (`lib/research/timeline.ts`, Phase 7). A derived, read-only,
+  chronological aggregation of the append-only histories — reuses the
+  world/formation timeline pattern.
+- **Export** (`lib/research/export.ts`, Phase 9). Maps a research project into
+  the SAME `ExportDoc` model as the Authoring Engine and **reuses its
+  deterministic MD/HTML/DOCX/PDF writers** — questions, hypotheses, argument
+  map, gaps, and evidence render with provenance as a numbered reference list.
+- **Research → Author** (Phase 10). `seedAuthorFromResearch` **reuses**
+  `createKnowledgeProject({ assembly })` to hand the same evidence ids to the
+  Authoring Engine — no content duplication; both sides record the handoff.
+- **Shared component.** The evidence-selection UI was extracted to
+  `components/EvidencePicker.tsx` and is now used by BOTH `/author/[id]` and
+  `/research/[id]` (the authoring page was refactored onto it, re-verified by
+  its E2E).
+- **Freshness.** `researchDeps` covers assembled evidence + evidence cited on
+  hypotheses. Persisted as `research_projects` (migration
+  `0015_research_workspace.sql`, own-rows RLS). UI: `/research` (list + create)
+  and `/research/[id]` (Overview / Questions / Evidence / Hypotheses / Arguments
+  / Timeline / Gaps / Export tabs, with filter + search). Entry points: Nav
+  (Research), Megathreads, Constitution.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

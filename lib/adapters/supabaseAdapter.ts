@@ -26,6 +26,7 @@ import type {
   Inquiry,
   KnowledgeProject,
   Principle,
+  ResearchProject,
   Megathread,
   PracticeCandidate,
   ReasoningQuery,
@@ -59,7 +60,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks, knowledgeProjects] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks, knowledgeProjects, researchProjects] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -84,6 +85,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("principles").select("*").order("created_at", { ascending: false }),
         this.client.from("frameworks").select("*").order("created_at", { ascending: false }),
         this.client.from("knowledge_projects").select("*").order("created_at", { ascending: false }),
+        this.client.from("research_projects").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -109,7 +111,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       conceptRelationships.error ||
       principles.error ||
       frameworks.error ||
-      knowledgeProjects.error;
+      knowledgeProjects.error ||
+      researchProjects.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -146,6 +149,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       principles: (principles.data ?? []).map(rowToPrinciple),
       frameworks: (frameworks.data ?? []).map(rowToFramework),
       knowledgeProjects: (knowledgeProjects.data ?? []).map(rowToProject),
+      researchProjects: (researchProjects.data ?? []).map(rowToResearch),
     };
   }
 
@@ -227,6 +231,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (state.knowledgeProjects.length) {
       await this.throwing(this.client.from("knowledge_projects").upsert(state.knowledgeProjects.map(projectToRow)));
     }
+    if (state.researchProjects.length) {
+      await this.throwing(this.client.from("research_projects").upsert(state.researchProjects.map(researchToRow)));
+    }
     this.lastState = "synced";
     this.lastError = undefined;
   }
@@ -289,6 +296,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("research_projects").delete().eq("user_id", uid));
     await this.throwing(this.client.from("knowledge_projects").delete().eq("user_id", uid));
     await this.throwing(this.client.from("concept_relationships").delete().eq("user_id", uid));
     await this.throwing(this.client.from("frameworks").delete().eq("user_id", uid));
@@ -1099,6 +1107,51 @@ function rowToProject(r: any): KnowledgeProject {
     fingerprint: (r.fingerprint ?? undefined) as KnowledgeProject["fingerprint"],
     aiModel: r.ai_model ?? "mock",
     source: (r.source ?? "mock") as KnowledgeProject["source"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function researchToRow(p: ResearchProject) {
+  return {
+    id: p.id,
+    title: p.title,
+    question: p.question,
+    description: p.description,
+    purpose: p.purpose,
+    scope: p.scope,
+    status: p.status,
+    questions: p.questions,
+    assembly: p.assembly,
+    notes: p.notes,
+    hypotheses: p.hypotheses,
+    argument_nodes: p.argumentNodes,
+    argument_edges: p.argumentEdges,
+    history: p.history,
+    fingerprint: p.fingerprint ?? null,
+    seeded_project_id: p.seededProjectId ?? null,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+  };
+}
+function rowToResearch(r: any): ResearchProject {
+  return {
+    id: r.id,
+    title: r.title ?? "",
+    question: r.question ?? "",
+    description: r.description ?? "",
+    purpose: r.purpose ?? "",
+    scope: r.scope ?? "",
+    status: (r.status ?? "open") as ResearchProject["status"],
+    questions: (r.questions ?? { subquestions: [], unknowns: [], assumptions: [], definitions: [], successCriteria: [], openProblems: [] }) as ResearchProject["questions"],
+    assembly: (r.assembly ?? {}) as ResearchProject["assembly"],
+    notes: (r.notes ?? []) as ResearchProject["notes"],
+    hypotheses: (r.hypotheses ?? []) as ResearchProject["hypotheses"],
+    argumentNodes: (r.argument_nodes ?? []) as ResearchProject["argumentNodes"],
+    argumentEdges: (r.argument_edges ?? []) as ResearchProject["argumentEdges"],
+    history: (r.history ?? []) as ResearchProject["history"],
+    fingerprint: (r.fingerprint ?? undefined) as ResearchProject["fingerprint"],
+    seededProjectId: r.seeded_project_id ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

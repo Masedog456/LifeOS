@@ -155,6 +155,12 @@ function BeliefRow({ belief }: { belief: Belief }) {
             >
               Model as a concept →
             </Link>
+            <Link
+              href={`/research?belief=${belief.id}&q=${encodeURIComponent(`Investigate: ${belief.text.slice(0, 60)}`)}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Investigate this →
+            </Link>
           </div>
 
           {/* Related evidence — collapsed, never auto-resolving */}

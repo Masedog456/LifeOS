@@ -118,6 +118,12 @@ export default function ThreadDetailPage() {
           >
             Write from this thread →
           </Link>
+          <Link
+            href={`/research?thread=${thread.id}&title=${encodeURIComponent(thread.title)}`}
+            className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+          >
+            Investigate this thread →
+          </Link>
         </div>
       </div>
 

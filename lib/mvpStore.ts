@@ -67,11 +67,22 @@ import type {
   DraftSection,
   DraftParagraph,
   OutlineOption,
+  ResearchProject,
+  ResearchQuestionSet,
+  ResearchItem,
+  ResearchDefinition,
+  ResearchNote,
+  Hypothesis,
+  ArgumentNode,
+  ArgumentNodeKind,
+  ArgumentEdge,
+  ArgumentEdgeKind,
+  UserConfidence as UserConfidenceType,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
 import { clearState, loadState, saveLocalOnly, saveState } from "@/lib/persistence";
-import { makeFingerprint, threadDeps, weeklyDeps, conceptDeps, projectDeps } from "@/lib/freshness/fingerprint";
+import { makeFingerprint, threadDeps, weeklyDeps, conceptDeps, projectDeps, researchDeps } from "@/lib/freshness/fingerprint";
 import { structuralMapping, slotField } from "@/lib/world/relationships";
 import { emptyAssembly } from "@/lib/authoring/assembly";
 
@@ -97,6 +108,7 @@ const EMPTY_STATE: StoreState = {
   principles: [],
   frameworks: [],
   knowledgeProjects: [],
+  researchProjects: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -279,6 +291,29 @@ export function hydrate() {
           })),
           history: asArray<KnowledgeProject["history"][number]>(p?.history),
         })),
+        researchProjects: asArray<ResearchProject>(parsed.researchProjects).map((p) => ({
+          ...p,
+          questions: {
+            subquestions: asArray<ResearchItem>(p?.questions?.subquestions),
+            unknowns: asArray<ResearchItem>(p?.questions?.unknowns),
+            assumptions: asArray<ResearchItem>(p?.questions?.assumptions),
+            definitions: asArray<ResearchDefinition>(p?.questions?.definitions),
+            successCriteria: asArray<ResearchItem>(p?.questions?.successCriteria),
+            openProblems: asArray<ResearchItem>(p?.questions?.openProblems),
+          },
+          assembly: { ...emptyAssembly(), ...(p?.assembly && typeof p.assembly === "object" ? p.assembly : {}) },
+          notes: asArray<ResearchNote>(p?.notes),
+          hypotheses: asArray<Hypothesis>(p?.hypotheses).map((h) => ({
+            ...h,
+            supportingEvidence: asArray<string>(h?.supportingEvidence),
+            contradictingEvidence: asArray<string>(h?.contradictingEvidence),
+            openQuestions: asArray<string>(h?.openQuestions),
+            history: asArray<Hypothesis["history"][number]>(h?.history),
+          })),
+          argumentNodes: asArray<ArgumentNode>(p?.argumentNodes).map((n) => ({ ...n, history: asArray<ArgumentNode["history"][number]>(n?.history) })),
+          argumentEdges: asArray<ArgumentEdge>(p?.argumentEdges),
+          history: asArray<ResearchProject["history"][number]>(p?.history),
+        })),
       };
       emit();
     }
@@ -293,7 +328,7 @@ export function resetStore() {
   setState({
     captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
     comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [], formationSessions: [],
-    concepts: [], conceptRelationships: [], principles: [], frameworks: [], knowledgeProjects: [],
+    concepts: [], conceptRelationships: [], principles: [], frameworks: [], knowledgeProjects: [], researchProjects: [],
   });
 }
 
@@ -2008,4 +2043,230 @@ export function markProjectReviewed(projectId: string): void {
 
 export function knowledgeProjectById(s: StoreState, projectId: string): KnowledgeProject | undefined {
   return s.knowledgeProjects.find((p) => p.id === projectId);
+}
+
+// ---------- Research workspace actions (LIFEOS-020) ----------
+
+function emptyQuestionSet(): ResearchQuestionSet {
+  return { subquestions: [], unknowns: [], assumptions: [], definitions: [], successCriteria: [], openProblems: [] };
+}
+
+/** Create a research project. Evidence-first, deterministic-first, human-directed. */
+export function createResearchProject(fields: {
+  title: string;
+  question: string;
+  description?: string;
+  purpose?: string;
+  scope?: string;
+  assembly?: Partial<ProjectAssembly>;
+}): string {
+  const at = now();
+  const project: ResearchProject = {
+    id: id(),
+    title: fields.title.trim() || "Untitled research",
+    question: fields.question.trim(),
+    description: fields.description?.trim() ?? "",
+    purpose: fields.purpose?.trim() ?? "",
+    scope: fields.scope?.trim() ?? "",
+    status: "open",
+    questions: emptyQuestionSet(),
+    assembly: { ...emptyAssembly(), ...fields.assembly },
+    notes: [],
+    hypotheses: [],
+    argumentNodes: [],
+    argumentEdges: [],
+    history: [{ at, note: "Research project created" }],
+    createdAt: at,
+    updatedAt: at,
+  };
+  setState({ ...state, researchProjects: [project, ...state.researchProjects] });
+  return project.id;
+}
+
+function patchResearch(projectId: string, patch: (p: ResearchProject) => ResearchProject, note?: string): void {
+  const at = now();
+  setState({
+    ...state,
+    researchProjects: state.researchProjects.map((p) => {
+      if (p.id !== projectId) return p;
+      const next = patch(p);
+      return { ...next, updatedAt: at, history: note ? [...p.history, { at, note }] : next.history };
+    }),
+  });
+}
+
+export function setResearchFields(
+  projectId: string,
+  fields: Partial<Pick<ResearchProject, "title" | "question" | "description" | "purpose" | "scope" | "status">>,
+): void {
+  patchResearch(projectId, (p) => ({ ...p, ...fields }));
+}
+
+/** The ResearchItem-array fields of the question set. */
+type ItemField = "subquestions" | "unknowns" | "assumptions" | "successCriteria" | "openProblems";
+
+export function addResearchItem(projectId: string, field: ItemField, text: string): void {
+  const t = text.trim();
+  if (!t) return;
+  const at = now();
+  patchResearch(projectId, (p) => ({
+    ...p,
+    questions: { ...p.questions, [field]: [...p.questions[field], { id: id(), text: t, resolved: false, history: [{ at, note: "Added" }], createdAt: at }] },
+  }), `Added ${field.replace(/s$/, "")}`);
+}
+
+export function editResearchItem(projectId: string, field: ItemField, itemId: string, text: string): void {
+  const t = text.trim();
+  if (!t) return;
+  const at = now();
+  patchResearch(projectId, (p) => ({
+    ...p,
+    questions: { ...p.questions, [field]: p.questions[field].map((it) => (it.id === itemId ? { ...it, text: t, history: [...it.history, { at, note: "Revised" }] } : it)) },
+  }));
+}
+
+export function toggleResearchItemResolved(projectId: string, field: ItemField, itemId: string): void {
+  const at = now();
+  patchResearch(projectId, (p) => ({
+    ...p,
+    questions: { ...p.questions, [field]: p.questions[field].map((it) => (it.id === itemId ? { ...it, resolved: !it.resolved, history: [...it.history, { at, note: it.resolved ? "Reopened" : "Marked resolved" }] } : it)) },
+  }));
+}
+
+export function removeResearchItem(projectId: string, field: ItemField, itemId: string): void {
+  patchResearch(projectId, (p) => ({ ...p, questions: { ...p.questions, [field]: p.questions[field].filter((it) => it.id !== itemId) } }));
+}
+
+export function addResearchDefinition(projectId: string, term: string, definition: string): void {
+  const t = term.trim();
+  if (!t) return;
+  const at = now();
+  patchResearch(projectId, (p) => ({
+    ...p,
+    questions: { ...p.questions, definitions: [...p.questions.definitions, { id: id(), term: t, definition: definition.trim(), history: [{ at, note: "Added" }], createdAt: at }] },
+  }), "Added definition");
+}
+
+export function removeResearchDefinition(projectId: string, defId: string): void {
+  patchResearch(projectId, (p) => ({ ...p, questions: { ...p.questions, definitions: p.questions.definitions.filter((d) => d.id !== defId) } }));
+}
+
+export function addResearchNote(projectId: string, text: string): void {
+  const t = text.trim();
+  if (!t) return;
+  patchResearch(projectId, (p) => ({ ...p, notes: [{ id: id(), text: t, createdAt: now() }, ...p.notes] }), "Added note");
+}
+
+export function removeResearchNote(projectId: string, noteId: string): void {
+  patchResearch(projectId, (p) => ({ ...p, notes: p.notes.filter((n) => n.id !== noteId) }));
+}
+
+/** Add/remove a record from the research evidence workspace (reuses ProjectAssembly). */
+export function toggleResearchEvidence(projectId: string, field: keyof ProjectAssembly, recordId: string): void {
+  patchResearch(projectId, (p) => {
+    const has = p.assembly[field].includes(recordId);
+    return { ...p, assembly: { ...p.assembly, [field]: has ? p.assembly[field].filter((x) => x !== recordId) : [...p.assembly[field], recordId] } };
+  }, "Evidence updated");
+}
+
+// ---- hypotheses (multiple competing; never auto-selected) ----
+
+export function addHypothesis(projectId: string, statement: string, confidence: UserConfidenceType = "low"): void {
+  const s = statement.trim();
+  if (!s) return;
+  const at = now();
+  patchResearch(projectId, (p) => ({
+    ...p,
+    hypotheses: [...p.hypotheses, { id: id(), statement: s, confidence, supportingEvidence: [], contradictingEvidence: [], openQuestions: [], status: "proposed", history: [{ at, note: "Proposed" }], createdAt: at, updatedAt: at }],
+  }), "Hypothesis proposed");
+}
+
+function patchHypothesisIn(projectId: string, hid: string, patch: (h: Hypothesis) => Hypothesis, note?: string): void {
+  const at = now();
+  patchResearch(projectId, (p) => ({
+    ...p,
+    hypotheses: p.hypotheses.map((h) => (h.id === hid ? { ...patch(h), updatedAt: at, history: note ? [...h.history, { at, note }] : patch(h).history } : h)),
+  }));
+}
+
+export function setHypothesisFields(projectId: string, hid: string, fields: Partial<Pick<Hypothesis, "statement" | "confidence" | "status">>): void {
+  patchHypothesisIn(projectId, hid, (h) => ({ ...h, ...fields }), fields.status ? `Marked ${fields.status}` : "Edited");
+}
+
+export function toggleHypothesisEvidence(projectId: string, hid: string, side: "supporting" | "contradicting", recordId: string): void {
+  patchHypothesisIn(projectId, hid, (h) => {
+    const key = side === "supporting" ? "supportingEvidence" : "contradictingEvidence";
+    const has = h[key].includes(recordId);
+    return { ...h, [key]: has ? h[key].filter((x) => x !== recordId) : [...h[key], recordId] };
+  }, `Evidence ${side} updated`);
+}
+
+export function setHypothesisOpenQuestions(projectId: string, hid: string, questions: string[]): void {
+  patchHypothesisIn(projectId, hid, (h) => ({ ...h, openQuestions: questions.map((q) => q.trim()).filter(Boolean) }));
+}
+
+export function removeHypothesis(projectId: string, hid: string): void {
+  patchResearch(projectId, (p) => ({ ...p, hypotheses: p.hypotheses.filter((h) => h.id !== hid) }));
+}
+
+// ---- argument map (every edge user-authored — nothing inferred) ----
+
+export function addArgumentNode(projectId: string, kind: ArgumentNodeKind, text: string, recordId?: string): void {
+  const t = text.trim();
+  if (!t) return;
+  const at = now();
+  patchResearch(projectId, (p) => ({
+    ...p,
+    argumentNodes: [...p.argumentNodes, { id: id(), kind, text: t, recordId, history: [{ at, note: "Added" }], createdAt: at }],
+  }), `Added ${kind.replace(/_/g, " ")}`);
+}
+
+export function removeArgumentNode(projectId: string, nodeId: string): void {
+  patchResearch(projectId, (p) => ({
+    ...p,
+    argumentNodes: p.argumentNodes.filter((n) => n.id !== nodeId),
+    argumentEdges: p.argumentEdges.filter((e) => e.fromId !== nodeId && e.toId !== nodeId),
+  }));
+}
+
+export function addArgumentEdge(projectId: string, fromId: string, toId: string, kind: ArgumentEdgeKind, reason?: string): void {
+  if (fromId === toId) return;
+  patchResearch(projectId, (p) => {
+    if (p.argumentEdges.some((e) => e.fromId === fromId && e.toId === toId && e.kind === kind)) return p;
+    return { ...p, argumentEdges: [...p.argumentEdges, { id: id(), fromId, toId, kind, reason: reason?.trim() || undefined, createdAt: now() }] };
+  }, "Argument link added");
+}
+
+export function removeArgumentEdge(projectId: string, edgeId: string): void {
+  patchResearch(projectId, (p) => ({ ...p, argumentEdges: p.argumentEdges.filter((e) => e.id !== edgeId) }));
+}
+
+/** Record a fresh evidence fingerprint for the research project. */
+export function markResearchReviewed(projectId: string): void {
+  const p = state.researchProjects.find((x) => x.id === projectId);
+  if (!p) return;
+  patchResearch(projectId, (pp) => ({ ...pp, fingerprint: makeFingerprint(state, researchDeps(pp)) }));
+}
+
+/**
+ * Seed the Authoring Engine from a research project (Phase 10). Creates a
+ * KnowledgeProject that REFERENCES the same evidence (no content duplication)
+ * and records the handoff on both sides.
+ */
+export function seedAuthorFromResearch(projectId: string, kind: ProjectKind = "essay"): string | undefined {
+  const p = state.researchProjects.find((x) => x.id === projectId);
+  if (!p) return undefined;
+  const authorId = createKnowledgeProject({
+    title: p.title,
+    kind,
+    description: p.description,
+    purpose: p.purpose || `Write up the findings of the research: ${p.question}`,
+    assembly: { ...p.assembly },
+  });
+  patchResearch(projectId, (pp) => ({ ...pp, seededProjectId: authorId }), "Seeded an authoring project");
+  return authorId;
+}
+
+export function researchProjectById(s: StoreState, projectId: string): ResearchProject | undefined {
+  return s.researchProjects.find((p) => p.id === projectId);
 }
