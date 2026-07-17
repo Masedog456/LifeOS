@@ -121,7 +121,21 @@
     Evidence-first and human-directed — the app assembles evidence, proposes
     outlines, and drafts one section at a time on request; it never writes
     autonomously and never invents a citation.
-15. **Project Settings → API**: copy the **Project URL** and the **anon
+15. Then run `supabase/migrations/0015_research_workspace.sql` (LIFEOS-020 — the
+    `research_projects` table: one jsonb-bearing row per investigation with a
+    primary question plus `questions` (subquestions/unknowns/assumptions/
+    definitions/success-criteria/open-problems, each with history), an evidence
+    workspace (`assembly` — references across every record type, never copies),
+    project-local `notes`, competing `hypotheses` (user-stated confidence,
+    supporting/contradicting evidence, open questions, status, history), an
+    explicit user-authored argument map (`argument_nodes` + `argument_edges`),
+    an append-only project change log, a freshness fingerprint, and an optional
+    `seeded_project_id` (the authoring project it seeded); own-rows RLS with
+    full CRUD). Additive and rerunnable; it does not touch migrations 0001–0014,
+    existing rows, other tables, or their RLS. Not autonomous, not web-browsing,
+    not an agent — evidence-first, deterministic-first, human-directed; gap
+    detection never resolves anything and hypotheses are never auto-selected.
+16. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -330,6 +344,28 @@ changes runtime behavior.
       byte verification, mock mode.) All prior suites still green (world 21,
       formation 26, decision 34, semantic 19, review, threads, inquiry, compare,
       retrieval, reason, qa3, pdf, long-source).
+- [x] **Research workspace (LIFEOS-020):** an investigation is created; the
+      question layer takes subquestions/unknowns/assumptions/definitions/
+      success-criteria/open-problems (each history-bearing, resolvable,
+      removable); the evidence workspace attaches records across every type with
+      provenance (references only) and supports filter/search; multiple
+      competing hypotheses are created with user-stated confidence, status, and
+      supporting/contradicting evidence toggles (none auto-selected); the
+      argument map takes user-authored claim/evidence/counterargument/objection/
+      rebuttal/open-question/unknown nodes and explicit edges (nothing inferred);
+      gap detection surfaces unsupported claims / missing / contradictory /
+      duplicate evidence / orphan questions / unresolved hypotheses
+      deterministically and resolves nothing; the research timeline is derived +
+      read-only; deterministic export (Markdown/HTML/DOCX/PDF, reusing the
+      authoring writers) downloads with valid signatures and preserves
+      provenance; the Research→Author handoff seeds a KnowledgeProject with the
+      SAME evidence ids (no duplication) and both sides link; projects persist
+      after refresh; entry points from Threads/Constitution; no secret value
+      leaks. (21/21 automated checks incl. export bytes + author handoff, mock
+      mode.) The shared `EvidencePicker` refactor left the authoring suite green
+      (23/23). All prior suites still green (world 21, formation 26, decision 34,
+      semantic 19, review, threads, inquiry, compare, retrieval, reason, qa3,
+      pdf, long-source).
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption

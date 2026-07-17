@@ -170,6 +170,15 @@ export function projectDeps(p: import("@/types/mvp").KnowledgeProject): string[]
     ...a.frameworkIds, ...a.principleIds, ...a.formationIds, ...a.decisionIds,
   ];
 }
+/** Research-project deps: every assembled evidence record + evidence cited on hypotheses. */
+export function researchDeps(p: import("@/types/mvp").ResearchProject): string[] {
+  const a = p.assembly;
+  return [
+    ...a.sourceIds, ...a.beliefIds, ...a.conceptIds, ...a.threadIds, ...a.reasoningIds,
+    ...a.frameworkIds, ...a.principleIds, ...a.formationIds, ...a.decisionIds,
+    ...p.hypotheses.flatMap((h) => [...h.supportingEvidence, ...h.contradictingEvidence]),
+  ];
+}
 
 const KIND_NOUN: Record<string, [string, string]> = {
   belief: ["belief was revised", "beliefs were revised"],

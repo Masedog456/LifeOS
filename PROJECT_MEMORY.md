@@ -24,6 +24,46 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-17
+- **LIFEOS-020 — Research workspace: implemented.** A structured environment to
+  investigate a question BEFORE writing conclusions. **Not** autonomous
+  research, **not** web browsing, **not** an agent — evidence-first,
+  deterministic-first, human-directed, and AI-FREE (adds no `/api/ai` task).
+  Built largely by REUSING earlier subsystems. New `ResearchProject` record: a
+  primary question + a `questions` layer (subquestions/unknowns/assumptions/
+  definitions/success-criteria/open-problems, each history-bearing), an evidence
+  `assembly` (**reuses** LIFEOS-019 `ProjectAssembly`/`assembleEvidence` —
+  references across all record types, never copies), project-local notes,
+  competing `hypotheses` (user-stated confidence, supporting/contradicting
+  evidence, open questions, status, history — never auto-selected), an explicit
+  user-authored argument map (`argumentNodes` claim/evidence/counterargument/
+  objection/rebuttal/open-question/unknown + `argumentEdges` supports/
+  contradicts/objects_to/rebuts/answers/raises/depends_on — nothing inferred),
+  append-only project history, freshness fingerprint, optional
+  `seededProjectId`. Gap detection (`lib/research/gaps.ts`): deterministic
+  unsupported-claim/missing-evidence/contradictory-evidence/duplicate-evidence/
+  orphan-question/unresolved-hypothesis — never resolves. Timeline
+  (`lib/research/timeline.ts`): derived read-only aggregation of append-only
+  histories. Export (`lib/research/export.ts`): maps research → the SAME
+  `ExportDoc` and REUSES the LIFEOS-019 MD/HTML/DOCX/PDF writers; provenance
+  preserved. Research→Author (`seedAuthorFromResearch`): REUSES
+  `createKnowledgeProject({assembly})` — same evidence ids, no duplication.
+  Shared `components/EvidencePicker.tsx` extracted and used by BOTH authoring +
+  research (authoring refactored onto it, re-verified). Freshness:
+  `researchDeps`. Persistence: array + adapters + additive migration
+  `0015_research_workspace.sql` (own-rows RLS, rerunnable; 0001–0014 untouched).
+  New `/research` + `/research/[id]` (Overview/Questions/Evidence/Hypotheses/
+  Arguments/Timeline/Gaps/Export tabs, filter+search); components HypothesisList,
+  ArgumentMap, GapList, ResearchTimeline, ResearchExportBar, shared
+  EvidencePicker; Nav "Research"; entry points from Megathreads + Constitution.
+  Verified: **21/21 research checks** (incl. export bytes + author handoff) +
+  authoring still **23/23** after the shared-component refactor + all prior
+  suites (world 21, formation 26, decision 34, semantic 19, review, threads,
+  inquiry, compare, retrieval, reason, qa3, pdf, long-source), zero runtime
+  errors; `lint`/`build` green. Supabase `research_projects` sync/RLS/
+  cross-device is code-complete but credential-pending. Still one AI route (no
+  new task); no agents, autonomous research, web browsing, or auto Constitution
+  changes.
+- Date: 2026-07-17
 - **LIFEOS-019 — Knowledge synthesis & authoring engine: implemented.** The
   synthesis layer — the user turns everything they have learned into a book/
   essay/lecture/course/paper/blog/guide/philosophy. **Not** a chatbot, **not**
@@ -1456,3 +1496,30 @@ scope or order.
   persistence is code-complete but credential-pending. README unchanged. No
   agents, autonomous writing, chatbot, notifications, auto Constitution changes,
   or new AI routes beyond `/api/ai`.
+- 2026-07-17 — Implemented **LIFEOS-020 research workspace** (base: merged
+  LIFEOS-019 on `main`; branch restarted from `origin/main`). Heavily reuse-
+  driven and AI-free (no `/api/ai` change). New: `lib/research/{gaps,timeline,
+  export}.ts` (deterministic gap detection; derived read-only timeline; research
+  → ExportDoc reusing the LIFEOS-019 export writers), `components/{HypothesisList,
+  ArgumentMap,GapList,ResearchTimeline,ResearchExportBar,EvidencePicker}.tsx`
+  (EvidencePicker extracted as a SHARED component now used by authoring too),
+  `app/research/page.tsx` + `app/research/[id]/page.tsx` (Overview/Questions/
+  Evidence/Hypotheses/Arguments/Timeline/Gaps/Export dashboard),
+  `supabase/migrations/0015_research_workspace.sql`. Extended `types/mvp.ts`
+  (`ResearchProject`, `ResearchQuestionSet`/`Item`/`Definition`, `Hypothesis`,
+  `ArgumentNode`/`Edge`, `ResearchGap`, `ResearchTimelineItem` + enums,
+  `StoreState.researchProjects`), `lib/freshness/fingerprint.ts`
+  (`researchDeps`), `lib/mvpStore.ts` (researchProjects + create/question-set/
+  evidence(reuses ProjectAssembly)/hypothesis/argument/author-handoff actions —
+  `seedAuthorFromResearch` reuses `createKnowledgeProject`), `lib/persistence.ts`,
+  `lib/adapters/{localAdapter,supabaseAdapter}.ts` (load/save/delete + row
+  mappers). Refactored `app/author/[id]/page.tsx` onto the shared EvidencePicker.
+  Entry points: `components/Nav.tsx` ("Research"), `app/threads/[id]/page.tsx`
+  ("Investigate this thread"), `app/constitution/page.tsx` ("Investigate this").
+  Verified 21/21 research (incl. export bytes + author handoff) + authoring
+  still 23/23 after the refactor + all prior suites (world 21, formation 26,
+  decision 34, semantic 19, review, threads, inquiry, compare, retrieval, reason,
+  qa3, pdf, long-source), zero runtime errors; `lint`=0, `build`=0. Supabase
+  `research_projects` persistence is code-complete but credential-pending.
+  README unchanged. No agents, autonomous research, web browsing, chatbot,
+  notifications, auto Constitution changes, or new AI routes beyond `/api/ai`.

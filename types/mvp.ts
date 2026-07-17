@@ -1609,6 +1609,170 @@ export interface KnowledgeProject {
   updatedAt: ISO;
 }
 
+// ---------- Research workspace (LIFEOS-020) ----------
+
+export type ResearchStatus = "open" | "investigating" | "synthesizing" | "concluded" | "archived" | "abandoned";
+
+/** A common append-only history entry (one dated note). */
+export interface ResearchHistoryEntry {
+  at: ISO;
+  note: string;
+}
+
+/**
+ * One tracked question-artifact (subquestion / unknown / assumption / success
+ * criterion / open problem). Every one maintains its own history (Phase 3).
+ */
+export interface ResearchItem {
+  id: string;
+  text: string;
+  resolved: boolean;
+  history: ResearchHistoryEntry[];
+  createdAt: ISO;
+}
+
+export interface ResearchDefinition {
+  id: string;
+  term: string;
+  definition: string;
+  history: ResearchHistoryEntry[];
+  createdAt: ISO;
+}
+
+/** The structured question layer (Phase 3). The primary question lives on the project. */
+export interface ResearchQuestionSet {
+  subquestions: ResearchItem[];
+  unknowns: ResearchItem[];
+  assumptions: ResearchItem[];
+  definitions: ResearchDefinition[];
+  successCriteria: ResearchItem[];
+  openProblems: ResearchItem[];
+}
+
+/** A project-local research note (Phase 4). Not a global record — never duplicated elsewhere. */
+export interface ResearchNote {
+  id: string;
+  text: string;
+  createdAt: ISO;
+}
+
+export type HypothesisStatus = "proposed" | "active" | "supported" | "weakened" | "refuted" | "abandoned";
+
+/**
+ * A competing explanation (Phase 5). Confidence is STATED BY THE USER, never
+ * computed. Users may hold multiple competing hypotheses; LifeOS never selects
+ * a winner automatically.
+ */
+export interface Hypothesis {
+  id: string;
+  statement: string;
+  confidence: UserConfidence;
+  /** Evidence record ids that support / contradict it (real records, not copies). */
+  supportingEvidence: string[];
+  contradictingEvidence: string[];
+  openQuestions: string[];
+  status: HypothesisStatus;
+  history: ResearchHistoryEntry[];
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
+/** Argument-map node kinds (Phase 6). */
+export type ArgumentNodeKind =
+  | "claim"
+  | "evidence"
+  | "counterargument"
+  | "objection"
+  | "rebuttal"
+  | "open_question"
+  | "unknown";
+
+export interface ArgumentNode {
+  id: string;
+  kind: ArgumentNodeKind;
+  text: string;
+  /** For evidence nodes: link to a real record id (provenance). */
+  recordId?: string;
+  history: ResearchHistoryEntry[];
+  createdAt: ISO;
+}
+
+/** Argument-map edge kinds (Phase 6). Every edge is user-authored — nothing inferred. */
+export type ArgumentEdgeKind =
+  | "supports"
+  | "contradicts"
+  | "objects_to"
+  | "rebuts"
+  | "answers"
+  | "raises"
+  | "depends_on";
+
+export interface ArgumentEdge {
+  id: string;
+  fromId: string;
+  toId: string;
+  kind: ArgumentEdgeKind;
+  reason?: string;
+  createdAt: ISO;
+}
+
+/** A detected research gap — surfaced deterministically, never resolved (Phase 8). */
+export type ResearchGapKind =
+  | "unsupported_claim"
+  | "missing_evidence"
+  | "contradictory_evidence"
+  | "duplicate_evidence"
+  | "orphan_question"
+  | "unresolved_hypothesis";
+
+export interface ResearchGap {
+  id: string;
+  kind: ResearchGapKind;
+  title: string;
+  detail: string;
+  refs: string[];
+}
+
+/** A derived, read-only research-timeline event (Phase 7). */
+export interface ResearchTimelineItem {
+  id: string;
+  at: ISO;
+  kind: "project" | "question" | "hypothesis" | "argument" | "evidence" | "discovery" | "decision";
+  title: string;
+  detail?: string;
+}
+
+/**
+ * A structured investigation — the user researches a question BEFORE writing
+ * conclusions. Not autonomous, not web-browsing, not an agent: evidence-first,
+ * deterministic-first, human-directed. Reuses the authoring `assembly` shape
+ * for its evidence workspace (references, never copies), and can seed the
+ * Authoring Engine when complete.
+ */
+export interface ResearchProject {
+  id: string;
+  title: string;
+  question: string;
+  description: string;
+  purpose: string;
+  scope: string;
+  status: ResearchStatus;
+  questions: ResearchQuestionSet;
+  /** Evidence workspace (Phase 4) — reuses ProjectAssembly across all record types. */
+  assembly: ProjectAssembly;
+  notes: ResearchNote[];
+  hypotheses: Hypothesis[];
+  argumentNodes: ArgumentNode[];
+  argumentEdges: ArgumentEdge[];
+  /** Append-only project change log. */
+  history: ResearchHistoryEntry[];
+  fingerprint?: SavedFingerprint;
+  /** The KnowledgeProject id this research seeded, if any (Phase 10). */
+  seededProjectId?: string;
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -1630,4 +1794,5 @@ export interface StoreState {
   principles: Principle[];
   frameworks: Framework[];
   knowledgeProjects: KnowledgeProject[];
+  researchProjects: ResearchProject[];
 }

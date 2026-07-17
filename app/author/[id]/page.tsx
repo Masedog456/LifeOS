@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import type { KnowledgeProject, ProjectAssembly, ProjectStatus, StoreState } from "@/types/mvp";
+import type { KnowledgeProject, ProjectStatus } from "@/types/mvp";
 import {
   addProjectSection,
   chooseProjectOutline,
@@ -22,50 +22,12 @@ import { projectDeps } from "@/lib/freshness/fingerprint";
 import AuthoringSection from "@/components/AuthoringSection";
 import ExportBar from "@/components/ExportBar";
 import FreshnessBadge from "@/components/FreshnessBadge";
+import EvidencePicker, { ASSEMBLY_FIELDS, pickAssemblyItems } from "@/components/EvidencePicker";
 
 const STATUSES: ProjectStatus[] = ["planning", "outlining", "drafting", "revising", "complete", "archived"];
 
 function snippet(s: string, n = 44): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
-}
-
-/** A toggle list for one evidence type in the assembly. */
-function EvidencePicker({
-  projectId, field, selected, items, label,
-}: {
-  projectId: string;
-  field: keyof ProjectAssembly;
-  selected: string[];
-  items: { id: string; label: string }[];
-  label: string;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <div>
-      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">{label} ({selected.length}/{items.length})</h3>
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((it) => (
-          <button key={it.id} type="button" onClick={() => toggleProjectEvidence(projectId, field, it.id)} className={`rounded-full px-2.5 py-1 text-[11px] ${selected.includes(it.id) ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "border border-black/[.12] text-zinc-500 dark:border-white/[.15]"}`}>
-            {it.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function pickItems(state: StoreState) {
-  return {
-    sources: state.sources.map((s) => ({ id: s.id, label: snippet(s.title, 30) })),
-    beliefs: state.beliefs.filter((b) => b.status !== "rejected").map((b) => ({ id: b.id, label: snippet(b.text, 30) })),
-    concepts: state.concepts.map((c) => ({ id: c.id, label: snippet(c.name, 30) })),
-    threads: state.megathreads.map((t) => ({ id: t.id, label: snippet(t.title, 30) })),
-    reasonings: state.reasonings.map((q) => ({ id: q.id, label: snippet(q.question, 30) })),
-    frameworks: state.frameworks.map((f) => ({ id: f.id, label: snippet(f.name, 30) })),
-    principles: state.principles.map((p) => ({ id: p.id, label: snippet(p.statement, 30) })),
-    formation: state.formationSessions.map((f) => ({ id: f.id, label: snippet(f.title, 30) })),
-    decisions: state.decisions.map((d) => ({ id: d.id, label: snippet(d.title, 30) })),
-  };
 }
 
 export default function AuthorProjectPage() {
@@ -77,7 +39,7 @@ export default function AuthorProjectPage() {
   const [error, setError] = useState<string | null>(null);
   const [newSection, setNewSection] = useState("");
 
-  const items = useMemo(() => pickItems(state), [state]);
+  const items = useMemo(() => pickAssemblyItems(state), [state]);
   const coverage = useMemo(() => (project ? citationCoverage(state, project) : null), [state, project]);
   const unsupported = useMemo(() => (project ? unsupportedAcrossProject(project) : []), [project]);
 
@@ -126,15 +88,9 @@ export default function AuthorProjectPage() {
         <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">1 · Assemble evidence</h2>
         <p className="mb-3 text-xs text-zinc-400">Choose what this work draws on. Everything keeps provenance; {assemblyCount(p.assembly)} record{assemblyCount(p.assembly) === 1 ? "" : "s"} assembled.</p>
         <div className="flex flex-col gap-4 rounded-2xl border border-black/[.06] p-5 dark:border-white/[.08]">
-          <EvidencePicker projectId={p.id} field="sourceIds" selected={p.assembly.sourceIds} items={items.sources} label="Sources" />
-          <EvidencePicker projectId={p.id} field="beliefIds" selected={p.assembly.beliefIds} items={items.beliefs} label="Beliefs" />
-          <EvidencePicker projectId={p.id} field="conceptIds" selected={p.assembly.conceptIds} items={items.concepts} label="Concepts" />
-          <EvidencePicker projectId={p.id} field="threadIds" selected={p.assembly.threadIds} items={items.threads} label="Threads" />
-          <EvidencePicker projectId={p.id} field="reasoningIds" selected={p.assembly.reasoningIds} items={items.reasonings} label="Reasonings" />
-          <EvidencePicker projectId={p.id} field="frameworkIds" selected={p.assembly.frameworkIds} items={items.frameworks} label="Frameworks" />
-          <EvidencePicker projectId={p.id} field="principleIds" selected={p.assembly.principleIds} items={items.principles} label="Principles" />
-          <EvidencePicker projectId={p.id} field="formationIds" selected={p.assembly.formationIds} items={items.formation} label="Reflections" />
-          <EvidencePicker projectId={p.id} field="decisionIds" selected={p.assembly.decisionIds} items={items.decisions} label="Decisions" />
+          {ASSEMBLY_FIELDS.map(({ field, label }) => (
+            <EvidencePicker key={field} field={field} label={label} selected={p.assembly[field]} items={items[field]} onToggle={(f, rid) => toggleProjectEvidence(p.id, f, rid)} />
+          ))}
           {assemblyCount(p.assembly) === 0 && <p className="text-xs text-zinc-400">Nothing assembled yet — select records above (or add some elsewhere in LifeOS first).</p>}
         </div>
       </section>

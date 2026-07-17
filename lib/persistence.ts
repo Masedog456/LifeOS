@@ -64,6 +64,7 @@ function normalize(partial: Partial<StoreState> | null): StoreState {
     principles: partial?.principles ?? [],
     frameworks: partial?.frameworks ?? [],
     knowledgeProjects: partial?.knowledgeProjects ?? [],
+    researchProjects: partial?.researchProjects ?? [],
   };
 }
 
