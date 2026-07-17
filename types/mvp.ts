@@ -1773,6 +1773,104 @@ export interface ResearchProject {
   updatedAt: ISO;
 }
 
+// ---------- Socratic dialogue & dialectical engine (LIFEOS-022) ----------
+
+export type DialogueStatus = "open" | "active" | "paused" | "concluded" | "archived";
+
+/** The kinds of turn in a structured dialogue (Phase 3). */
+export type DialogueTurnKind =
+  | "question"
+  | "response"
+  | "challenge"
+  | "clarification"
+  | "counterargument"
+  | "evidence"
+  | "reflection"
+  | "summary";
+
+/** Who authored a turn: the user, the deterministic Socratic engine, or a perspective. */
+export type DialogueTurnAuthor = "you" | "socratic" | "perspective";
+
+/** Timeline flags a turn may carry (Phase 8). */
+export type DialogueTurnFlag = "insight" | "new_question" | "dead_end";
+
+/** One dialogue turn. Every turn stores provenance (cited record ids). */
+export interface DialogueTurn {
+  id: string;
+  kind: DialogueTurnKind;
+  text: string;
+  author: DialogueTurnAuthor;
+  /** When author is "perspective": which participant spoke. */
+  perspectiveId?: string;
+  /** Evidence record ids grounding this turn (provenance). */
+  citations: string[];
+  flags: DialogueTurnFlag[];
+  createdAt: ISO;
+}
+
+/** A viewpoint drawn from the user's own knowledge (Phase 5). Cites its evidence. */
+export type PerspectiveKind =
+  | "constitution"
+  | "past_constitution"
+  | "framework"
+  | "principle"
+  | "belief"
+  | "research"
+  | "author";
+
+export interface Perspective {
+  id: string;
+  kind: PerspectiveKind;
+  label: string;
+  /** The record this perspective is sourced from (a framework/principle/belief/…). */
+  refId?: string;
+  createdAt: ISO;
+}
+
+/** A deterministic Socratic line of inquiry (Phase 4). A prompt, never an answer. */
+export interface DialogueInquiry {
+  id: string;
+  prompt: string;
+  rationale: string;
+  /** Records this line of inquiry draws on (for grounding). */
+  relatedIds: string[];
+}
+
+/** A derived, read-only dialogue-timeline event (Phase 8). */
+export interface DialogueTimelineItem {
+  id: string;
+  at: ISO;
+  kind: "turn" | "insight" | "new_question" | "dead_end" | "session";
+  title: string;
+  detail?: string;
+}
+
+/**
+ * A structured Socratic dialogue — the user investigates an idea through
+ * turn-based inquiry grounded in their own knowledge. NOT a chatbot, NOT
+ * roleplay, NOT autonomous reasoning: the Socratic engine proposes deterministic
+ * PROMPTS, perspectives cite the user's own records, and the graph surfaces
+ * related evidence. Nothing changes automatically.
+ */
+export interface DialogueSession {
+  id: string;
+  title: string;
+  topic: string;
+  purpose: string;
+  status: DialogueStatus;
+  participants: Perspective[];
+  /** Records the dialogue is "about" — force-included in graph context + freshness. */
+  seedRefs: string[];
+  turns: DialogueTurn[];
+  /** Records this dialogue spawned (Phase 7), for provenance. */
+  outcomes: { at: ISO; kind: string; recordId: string; label: string }[];
+  /** Append-only project change log. */
+  history: { at: ISO; note: string }[];
+  fingerprint?: SavedFingerprint;
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -1795,4 +1893,5 @@ export interface StoreState {
   frameworks: Framework[];
   knowledgeProjects: KnowledgeProject[];
   researchProjects: ResearchProject[];
+  dialogueSessions: DialogueSession[];
 }

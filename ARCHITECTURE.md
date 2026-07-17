@@ -706,6 +706,66 @@ prior regression suites re-run green).
   `updated_at` indexes (incremental loads) + an own-rows `sync_meta` cursor
   table. No table/row/RLS/migration 0001–0015 is modified.
 
+## Socratic dialogue & dialectical engine (LIFEOS-022 — implemented)
+
+A structured environment to *investigate* an idea through disciplined dialogue —
+**not** a chatbot, **not** roleplay, **not** autonomous reasoning. Evidence-
+first, deterministic-first, human-directed, and **AI-FREE** (adds no `/api/ai`
+task — the Socratic engine is deterministic, which is precisely what "not a
+chatbot" requires). Built largely by REUSING earlier subsystems (reasoning,
+research, world model, knowledge graph, authoring, decision intelligence).
+
+- **Record** (`DialogueSession`). id / title / topic / purpose / status
+  (open → active → paused → concluded → archived) / `participants`
+  (perspectives) / `seedRefs` / `turns` / `outcomes` / append-only `history` /
+  freshness `fingerprint`. Seedable from a belief, thread, research project, or
+  concept.
+- **Dialogue turns** (`DialogueTurn`). Typed (question / response / challenge /
+  clarification / counterargument / evidence / reflection / summary), authored
+  (you / socratic / perspective), each carrying its own `citations` and `flags`
+  (insight / new_question / dead_end). Provenance lives on every turn — a turn
+  says who spoke, from which viewpoint, and on what evidence.
+- **Socratic engine** (`lib/dialogue/socratic.ts`, `generateInquiries`).
+  Deterministic. Always offers the six classic moves — "What do you mean by…?",
+  "What evidence supports this?", "Could the opposite be true?", "What
+  assumptions are hidden?", "What follows if this is true?", "What would falsify
+  this?" — plus, per framework/principle perspective, a "How would [X] respond?"
+  line, and graph-grounded lines for contradicting beliefs, related research,
+  decision history, and related concepts. It never chooses for you: it presents
+  multiple lines of inquiry as prompts, and only the user turns them into turns.
+- **Perspective engine** (participants). Viewpoints drawn from the user's own
+  knowledge — Current / Past Constitution, Frameworks, Principles, Beliefs,
+  Research projects, Authors (sources). Each perspective cites the record it is
+  sourced from; nothing is invented or roleplayed.
+- **Graph integration** (`lib/dialogue/context.ts`, `buildDialogueContext`).
+  REUSES the LIFEOS-021 knowledge graph (`buildGraph` / `relationshipsOf`) to
+  surface, from EXPLICIT references only, related concepts, supporting +
+  contradicting beliefs, related research, authoring, and decision + formation
+  history around the dialogue's anchors (seedRefs + topic-named concepts +
+  perspective refs). Never inferred silently.
+- **Outcomes** (`lib/mvpStore.ts` spawners). A dialogue can become a Research /
+  Knowledge / Decision project, a Concept / Principle / Framework, or a Belief /
+  Constitution proposal — each REUSES the existing creator
+  (`createResearchProject` / `createKnowledgeProject` / `createDecision` /
+  `createConcept` / `createPrinciple` / `createFramework` / `sendToInbox`) and is
+  recorded as provenance on the dialogue. Nothing is automatic; belief and
+  Constitution proposals always route to the Inbox for human judgment.
+- **Timeline** (`lib/dialogue/timeline.ts`, `buildDialogueTimeline`). Derived,
+  read-only aggregation of the session's creation, turns (surfacing insights,
+  new questions, and dead ends via turn flags), and outcomes — append-only,
+  newest-first. Same derived-timeline pattern as research/formation.
+- **UI.** `/dialogue` (list + create, with seed params from constitution /
+  threads / research / concepts) and `/dialogue/[id]` (tabbed Dialogue /
+  Perspectives / Graph / Outcomes / Timeline). Nav gains "Dialogue"; the
+  Constitution page offers "Question in dialogue →" on a belief and Threads
+  offers "Investigate in dialogue →".
+- **Freshness + persistence.** `dialogueDeps` (seedRefs + participant refs +
+  turn citations) feeds the shared freshness fingerprint. `dialogueSessions`
+  array persists through both adapters; migration `0017_dialogue_engine.sql`
+  adds an own-rows-RLS `dialogue_sessions` table (jsonb participants / seed_refs
+  / turns / outcomes / history / fingerprint). No table/row/RLS/migration
+  0001–0016 is modified.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

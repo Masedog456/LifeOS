@@ -150,7 +150,15 @@
     `NOTICE`) instead of aborting — it never creates a placeholder table. Apply
     the missing feature migration (e.g. `0006_dialectical_intelligence.sql` for
     `inquiries`) and re-run 0016 to add the skipped index (0016 is idempotent).
-17. **Project Settings → API**: copy the **Project URL** and the **anon
+17. Then run `supabase/migrations/0017_dialogue_engine.sql` (LIFEOS-022 — adds
+    the `dialogue_sessions` table for the Socratic dialogue engine: one row per
+    dialogue with jsonb `participants`/`seed_refs`/`turns`/`outcomes`/`history`/
+    `fingerprint` columns, own-rows RLS with full CRUD, and `user_id` +
+    `updated_at` indexes for incremental sync). Additive and rerunnable; it does
+    not touch migrations 0001–0016, existing rows, other tables, or their RLS.
+    The dialogue engine adds no AI route — the Socratic prompt generation is
+    fully deterministic.
+18. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -399,6 +407,25 @@ changes runtime behavior.
       inquiry, compare, retrieval, reason, qa3, pdf, long-source. Incremental
       remote push (dirty-table gating) and the `sync_meta`/`updated_at` indexes
       are code-complete and credential-pending like all remote sync.
+- [x] **Socratic dialogue & dialectical engine (LIFEOS-022):** a dialogue is
+      created from an idea; the deterministic Socratic engine emits the classic
+      moves ("What do you mean…", "What would falsify this", "Could the opposite
+      be true") and never returns an answer/chatbot reply; "Ask" adds a typed
+      question turn (author: socratic) and a user response turn is added with its
+      own citations; perspectives (Current Constitution + a framework) are added,
+      each citing its own record, and a framework perspective yields a "How would
+      [X] respond?" line of inquiry; the Graph tab REUSES the knowledge graph to
+      surface a related concept (Free will) and supporting/contradicting beliefs;
+      an outcome creates a Research project (reusing the research engine) recorded
+      as provenance on the dialogue, and a belief proposal is routed to the Inbox
+      (never auto-added); a flagged insight appears on the derived read-only
+      timeline; the dialogue persists across reload; Nav + the Constitution entry
+      point ("Question in dialogue") are present. (19/19 dialogue checks.) **Non-
+      breaking: ALL prior suites re-run green** — research 21, authoring 23,
+      world 21, formation 26, decision, semantic, review, threads, inquiry,
+      compare, retrieval, reason, qa3, pdf, long-source, graph 15. No new AI route
+      (Socratic generation is deterministic). Supabase `dialogue_sessions`
+      persistence is code-complete and credential-pending like all remote sync.
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption

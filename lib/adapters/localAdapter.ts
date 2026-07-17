@@ -20,7 +20,7 @@ import type { PersistenceAdapter, PersistenceHealth } from "@/lib/adapters/types
 const STORAGE_KEY = "lifeos.mvp.v1";
 
 function read(): StoreState {
-  const empty: StoreState = { captures: [], proposals: [], beliefs: [], sources: [], feedback: [], comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [], formationSessions: [], concepts: [], conceptRelationships: [], principles: [], frameworks: [], knowledgeProjects: [], researchProjects: [] };
+  const empty: StoreState = { captures: [], proposals: [], beliefs: [], sources: [], feedback: [], comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [], formationSessions: [], concepts: [], conceptRelationships: [], principles: [], frameworks: [], knowledgeProjects: [], researchProjects: [], dialogueSessions: [] };
   if (typeof window === "undefined") return empty;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -48,6 +48,7 @@ function read(): StoreState {
       frameworks: parsed.frameworks ?? [],
       knowledgeProjects: parsed.knowledgeProjects ?? [],
       researchProjects: parsed.researchProjects ?? [],
+      dialogueSessions: parsed.dialogueSessions ?? [],
     };
   } catch {
     return empty;

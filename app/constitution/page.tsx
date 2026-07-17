@@ -161,6 +161,12 @@ function BeliefRow({ belief }: { belief: Belief }) {
             >
               Investigate this →
             </Link>
+            <Link
+              href={`/dialogue?belief=${belief.id}&topic=${encodeURIComponent(belief.text.slice(0, 80))}`}
+              className="text-xs font-medium uppercase tracking-wide text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Question in dialogue →
+            </Link>
           </div>
 
           {/* Related evidence — collapsed, never auto-resolving */}

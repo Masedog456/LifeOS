@@ -78,11 +78,19 @@ import type {
   ArgumentEdge,
   ArgumentEdgeKind,
   UserConfidence as UserConfidenceType,
+  DialogueSession,
+  DialogueStatus,
+  DialogueTurn,
+  DialogueTurnKind,
+  DialogueTurnAuthor,
+  DialogueTurnFlag,
+  Perspective,
+  PerspectiveKind,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
 import { clearState, loadState, saveLocalOnly, saveState } from "@/lib/persistence";
-import { makeFingerprint, threadDeps, weeklyDeps, conceptDeps, projectDeps, researchDeps } from "@/lib/freshness/fingerprint";
+import { makeFingerprint, threadDeps, weeklyDeps, conceptDeps, projectDeps, researchDeps, dialogueDeps } from "@/lib/freshness/fingerprint";
 import { structuralMapping, slotField } from "@/lib/world/relationships";
 import { emptyAssembly } from "@/lib/authoring/assembly";
 
@@ -109,6 +117,7 @@ const EMPTY_STATE: StoreState = {
   frameworks: [],
   knowledgeProjects: [],
   researchProjects: [],
+  dialogueSessions: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -314,6 +323,18 @@ export function hydrate() {
           argumentEdges: asArray<ArgumentEdge>(p?.argumentEdges),
           history: asArray<ResearchProject["history"][number]>(p?.history),
         })),
+        dialogueSessions: asArray<DialogueSession>(parsed.dialogueSessions).map((d) => ({
+          ...d,
+          participants: asArray<Perspective>(d?.participants),
+          seedRefs: asArray<string>(d?.seedRefs),
+          turns: asArray<DialogueTurn>(d?.turns).map((t) => ({
+            ...t,
+            citations: asArray<string>(t?.citations),
+            flags: asArray<DialogueTurnFlag>(t?.flags),
+          })),
+          outcomes: asArray<DialogueSession["outcomes"][number]>(d?.outcomes),
+          history: asArray<DialogueSession["history"][number]>(d?.history),
+        })),
       };
       emit();
     }
@@ -328,7 +349,7 @@ export function resetStore() {
   setState({
     captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
     comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [], formationSessions: [],
-    concepts: [], conceptRelationships: [], principles: [], frameworks: [], knowledgeProjects: [], researchProjects: [],
+    concepts: [], conceptRelationships: [], principles: [], frameworks: [], knowledgeProjects: [], researchProjects: [], dialogueSessions: [],
   });
 }
 
@@ -2269,4 +2290,186 @@ export function seedAuthorFromResearch(projectId: string, kind: ProjectKind = "e
 
 export function researchProjectById(s: StoreState, projectId: string): ResearchProject | undefined {
   return s.researchProjects.find((p) => p.id === projectId);
+}
+
+// ---------- Socratic dialogue actions (LIFEOS-022) ----------
+
+/** Create a dialogue session. Not a chatbot: the user drives; nothing auto-answers. */
+export function createDialogue(fields: {
+  title: string;
+  topic: string;
+  purpose?: string;
+  seedRefs?: string[];
+  participants?: Perspective[];
+}): string {
+  const at = now();
+  const session: DialogueSession = {
+    id: id(),
+    title: fields.title.trim() || fields.topic.trim().slice(0, 60) || "Untitled dialogue",
+    topic: fields.topic.trim(),
+    purpose: fields.purpose?.trim() ?? "",
+    status: "open",
+    participants: fields.participants ?? [],
+    seedRefs: fields.seedRefs ?? [],
+    turns: [],
+    outcomes: [],
+    history: [{ at, note: "Dialogue opened" }],
+    createdAt: at,
+    updatedAt: at,
+  };
+  setState({ ...state, dialogueSessions: [session, ...state.dialogueSessions] });
+  return session.id;
+}
+
+function patchDialogue(dialogueId: string, patch: (d: DialogueSession) => DialogueSession, note?: string): void {
+  const at = now();
+  setState({
+    ...state,
+    dialogueSessions: state.dialogueSessions.map((d) => {
+      if (d.id !== dialogueId) return d;
+      const next = patch(d);
+      return { ...next, updatedAt: at, history: note ? [...d.history, { at, note }] : next.history };
+    }),
+  });
+}
+
+export function setDialogueFields(dialogueId: string, fields: Partial<Pick<DialogueSession, "title" | "topic" | "purpose" | "status">>): void {
+  patchDialogue(dialogueId, (d) => ({ ...d, ...fields }));
+}
+
+/** Add a perspective (a viewpoint sourced from the user's own knowledge). */
+export function addPerspective(dialogueId: string, kind: PerspectiveKind, label: string, refId?: string): void {
+  const l = label.trim();
+  if (!l) return;
+  patchDialogue(dialogueId, (d) => (
+    d.participants.some((p) => p.kind === kind && p.refId === refId && p.label === l)
+      ? d
+      : { ...d, participants: [...d.participants, { id: id(), kind, label: l, refId, createdAt: now() }] }
+  ), `Added ${kind} perspective`);
+}
+
+export function removePerspective(dialogueId: string, perspectiveId: string): void {
+  patchDialogue(dialogueId, (d) => ({ ...d, participants: d.participants.filter((p) => p.id !== perspectiveId) }));
+}
+
+/** Add a dialogue turn (with provenance). The user authors; the engine only prompts. */
+export function addDialogueTurn(dialogueId: string, fields: {
+  kind: DialogueTurnKind;
+  text: string;
+  author?: DialogueTurnAuthor;
+  perspectiveId?: string;
+  citations?: string[];
+}): void {
+  const t = fields.text.trim();
+  if (!t) return;
+  patchDialogue(dialogueId, (d) => ({
+    ...d,
+    status: d.status === "open" ? "active" : d.status,
+    turns: [...d.turns, { id: id(), kind: fields.kind, text: t, author: fields.author ?? "you", perspectiveId: fields.perspectiveId, citations: fields.citations ?? [], flags: [], createdAt: now() }],
+  }), `Added ${fields.kind}`);
+}
+
+export function toggleDialogueTurnFlag(dialogueId: string, turnId: string, flag: DialogueTurnFlag): void {
+  patchDialogue(dialogueId, (d) => ({
+    ...d,
+    turns: d.turns.map((t) => (t.id === turnId ? { ...t, flags: t.flags.includes(flag) ? t.flags.filter((f) => f !== flag) : [...t.flags, flag] } : t)),
+  }));
+}
+
+export function removeDialogueTurn(dialogueId: string, turnId: string): void {
+  patchDialogue(dialogueId, (d) => ({ ...d, turns: d.turns.filter((t) => t.id !== turnId) }));
+}
+
+export function setDialogueStatus(dialogueId: string, status: DialogueStatus): void {
+  patchDialogue(dialogueId, (d) => ({ ...d, status }), `Marked ${status}`);
+}
+
+export function markDialogueReviewed(dialogueId: string): void {
+  const d = state.dialogueSessions.find((x) => x.id === dialogueId);
+  if (!d) return;
+  patchDialogue(dialogueId, (dd) => ({ ...dd, fingerprint: makeFingerprint(state, dialogueDeps(dd)) }));
+}
+
+/** Bucket a dialogue's evidence (seeds + citations + perspectives) into a ProjectAssembly. */
+function dialogueAssembly(d: DialogueSession): ProjectAssembly {
+  const ids = new Set<string>([
+    ...d.seedRefs,
+    ...d.turns.flatMap((t) => t.citations),
+    ...d.participants.map((p) => p.refId).filter((x): x is string => Boolean(x)),
+  ]);
+  const a = emptyAssembly();
+  for (const rid of ids) {
+    if (state.sources.some((s) => s.id === rid)) a.sourceIds.push(rid);
+    else if (state.beliefs.some((b) => b.id === rid)) a.beliefIds.push(rid);
+    else if (state.concepts.some((c) => c.id === rid)) a.conceptIds.push(rid);
+    else if (state.megathreads.some((t) => t.id === rid)) a.threadIds.push(rid);
+    else if (state.reasonings.some((r) => r.id === rid)) a.reasoningIds.push(rid);
+    else if (state.frameworks.some((f) => f.id === rid)) a.frameworkIds.push(rid);
+    else if (state.principles.some((p) => p.id === rid)) a.principleIds.push(rid);
+    else if (state.formationSessions.some((f) => f.id === rid)) a.formationIds.push(rid);
+    else if (state.decisions.some((dd) => dd.id === rid)) a.decisionIds.push(rid);
+  }
+  return a;
+}
+
+function recordOutcome(dialogueId: string, kind: string, recordId: string, label: string): void {
+  patchDialogue(dialogueId, (d) => ({ ...d, outcomes: [...d.outcomes, { at: now(), kind, recordId, label }] }), `Created ${kind}`);
+}
+
+/** Outcome (Phase 7): spawn a Research Project seeded from this dialogue's evidence. */
+export function dialogueToResearch(dialogueId: string): string | undefined {
+  const d = state.dialogueSessions.find((x) => x.id === dialogueId);
+  if (!d) return undefined;
+  const rid = createResearchProject({ title: d.title, question: d.topic || d.title, purpose: d.purpose, assembly: dialogueAssembly(d) });
+  recordOutcome(dialogueId, "research project", rid, d.title);
+  return rid;
+}
+
+/** Outcome: spawn a Knowledge (authoring) Project seeded from this dialogue's evidence. */
+export function dialogueToKnowledge(dialogueId: string): string | undefined {
+  const d = state.dialogueSessions.find((x) => x.id === dialogueId);
+  if (!d) return undefined;
+  const kid = createKnowledgeProject({ title: d.title, kind: "essay", purpose: d.purpose, assembly: dialogueAssembly(d) });
+  recordOutcome(dialogueId, "knowledge project", kid, d.title);
+  return kid;
+}
+
+/** Outcome: spawn a Decision framed by the dialogue's topic. */
+export function dialogueToDecision(dialogueId: string): string | undefined {
+  const d = state.dialogueSessions.find((x) => x.id === dialogueId);
+  if (!d) return undefined;
+  const did = createDecision({ title: d.title, question: d.topic || d.title, seedRefs: [...new Set(d.turns.flatMap((t) => t.citations))] });
+  recordOutcome(dialogueId, "decision", did, d.title);
+  return did;
+}
+
+/** Outcome: model a concept / principle / framework from the dialogue. */
+export function dialogueToConcept(dialogueId: string, name: string): string | undefined {
+  if (!name.trim()) return undefined;
+  const cid = createConcept({ name, source: "user" });
+  recordOutcome(dialogueId, "concept", cid, name.trim());
+  return cid;
+}
+export function dialogueToPrinciple(dialogueId: string, statement: string): string | undefined {
+  if (!statement.trim()) return undefined;
+  const pid = createPrinciple({ statement, source: "user" });
+  recordOutcome(dialogueId, "principle", pid, statement.trim().slice(0, 60));
+  return pid;
+}
+export function dialogueToFramework(dialogueId: string, name: string): string | undefined {
+  if (!name.trim()) return undefined;
+  const fid = createFramework({ name, kind: "framework", source: "user" });
+  recordOutcome(dialogueId, "framework", fid, name.trim());
+  return fid;
+}
+
+/** Outcome: send a belief (or Constitution) proposal to the Inbox — never auto-added. */
+export function dialogueToBeliefProposal(dialogueId: string, text: string, constitution = false): void {
+  if (!text.trim()) return;
+  sendToInbox(text.trim(), [{ claim: text.trim() }], "mock");
+  recordOutcome(dialogueId, constitution ? "constitution proposal" : "belief proposal", "", text.trim().slice(0, 60));
+}
+
+export function dialogueById(s: StoreState, dialogueId: string): DialogueSession | undefined {
+  return s.dialogueSessions.find((d) => d.id === dialogueId);
 }
