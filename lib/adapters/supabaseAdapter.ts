@@ -153,8 +153,11 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     };
   }
 
-  async saveState(state: StoreState): Promise<void> {
-    if (state.sources.length) {
+  async saveState(state: StoreState, dirty?: Set<keyof StoreState>): Promise<void> {
+    // Incremental sync (LIFEOS-021): with a `dirty` set, push only changed
+    // domains; without one, push everything (full/backward-compatible sync).
+    const w = (k: keyof StoreState) => !dirty || dirty.has(k);
+    if (w("sources") && state.sources.length) {
       await this.throwing(this.client.from("sources").upsert(state.sources.map(sourceToRow)));
       // Extracted + user-saved quotes live in saved_quotes (append-only).
       const quoteRows = state.sources.flatMap((s) =>
@@ -162,11 +165,11 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       );
       if (quoteRows.length) await this.insertIgnore("saved_quotes", quoteRows, "source_id,text");
     }
-    if (state.captures.length)
+    if (w("captures") && state.captures.length)
       await this.throwing(this.client.from("captures").upsert(state.captures.map(captureToRow)));
-    if (state.proposals.length)
+    if (w("proposals") && state.proposals.length)
       await this.throwing(this.client.from("proposals").upsert(state.proposals.map(proposalToRow)));
-    if (state.beliefs.length) {
+    if (w("beliefs") && state.beliefs.length) {
       await this.throwing(this.client.from("beliefs").upsert(state.beliefs.map(beliefToRow)));
       const revRows = state.beliefs.flatMap((b) =>
         b.revisions.map((r, seq) => ({ belief_id: b.id, seq, text: r.text, reason: r.reason, at: r.at })),
@@ -177,7 +180,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       if (revRows.length) await this.insertIgnore("belief_revisions", revRows, "belief_id,seq");
       if (judRows.length) await this.insertIgnore("user_judgments", judRows, "belief_id,seq");
     }
-    if (state.feedback?.length) {
+    if (w("feedback") && state.feedback?.length) {
       const rows = state.feedback.map((f) => ({
         record_id: f.recordId,
         verdict: f.verdict,
@@ -186,52 +189,52 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       }));
       await this.insertIgnore("retrieval_feedback", rows, "user_id,record_id,at");
     }
-    if (state.comparisons.length) {
+    if (w("comparisons") && state.comparisons.length) {
       await this.throwing(this.client.from("comparisons").upsert(state.comparisons.map(comparisonToRow)));
     }
-    if (state.inquiries.length) {
+    if (w("inquiries") && state.inquiries.length) {
       await this.throwing(this.client.from("inquiries").upsert(state.inquiries.map(inquiryToRow)));
     }
-    if (state.megathreads.length) {
+    if (w("megathreads") && state.megathreads.length) {
       await this.throwing(this.client.from("megathreads").upsert(state.megathreads.map(megathreadToRow)));
     }
-    if (state.reflections.length) {
+    if (w("reflections") && state.reflections.length) {
       await this.throwing(this.client.from("reflections").upsert(state.reflections.map(reflectionToRow)));
     }
-    if (state.practices.length) {
+    if (w("practices") && state.practices.length) {
       await this.throwing(this.client.from("practices").upsert(state.practices.map(practiceToRow)));
     }
-    if (state.reviews.length) {
+    if (w("reviews") && state.reviews.length) {
       await this.throwing(this.client.from("review_sessions").upsert(state.reviews.map(reviewToRow)));
     }
-    if (state.reasonings.length) {
+    if (w("reasonings") && state.reasonings.length) {
       await this.throwing(this.client.from("reasonings").upsert(state.reasonings.map(reasoningToRow)));
     }
-    if (state.embeddings.length) {
+    if (w("embeddings") && state.embeddings.length) {
       await this.throwing(this.client.from("embeddings").upsert(state.embeddings.map(embeddingToRow), { onConflict: "user_id,record_id" }));
     }
-    if (state.decisions.length) {
+    if (w("decisions") && state.decisions.length) {
       await this.throwing(this.client.from("decisions").upsert(state.decisions.map(decisionToRow)));
     }
-    if (state.formationSessions.length) {
+    if (w("formationSessions") && state.formationSessions.length) {
       await this.throwing(this.client.from("formation_sessions").upsert(state.formationSessions.map(formationSessionToRow)));
     }
-    if (state.concepts.length) {
+    if (w("concepts") && state.concepts.length) {
       await this.throwing(this.client.from("concepts").upsert(state.concepts.map(conceptToRow)));
     }
-    if (state.conceptRelationships.length) {
+    if (w("conceptRelationships") && state.conceptRelationships.length) {
       await this.throwing(this.client.from("concept_relationships").upsert(state.conceptRelationships.map(relationshipToRow)));
     }
-    if (state.principles.length) {
+    if (w("principles") && state.principles.length) {
       await this.throwing(this.client.from("principles").upsert(state.principles.map(principleToRow)));
     }
-    if (state.frameworks.length) {
+    if (w("frameworks") && state.frameworks.length) {
       await this.throwing(this.client.from("frameworks").upsert(state.frameworks.map(frameworkToRow)));
     }
-    if (state.knowledgeProjects.length) {
+    if (w("knowledgeProjects") && state.knowledgeProjects.length) {
       await this.throwing(this.client.from("knowledge_projects").upsert(state.knowledgeProjects.map(projectToRow)));
     }
-    if (state.researchProjects.length) {
+    if (w("researchProjects") && state.researchProjects.length) {
       await this.throwing(this.client.from("research_projects").upsert(state.researchProjects.map(researchToRow)));
     }
     this.lastState = "synced";

@@ -30,8 +30,12 @@ export interface PersistenceAdapter {
 
   /** Load the full state for the current user (or null if none). */
   loadState(): Promise<Partial<StoreState> | null>;
-  /** Persist the full state (idempotent upserts for remote). */
-  saveState(state: StoreState): Promise<void>;
+  /**
+   * Persist state (idempotent upserts for remote). When `dirty` is provided
+   * (LIFEOS-021 incremental sync), only those domains are pushed; when omitted,
+   * the whole state is persisted (full sync — backward compatible).
+   */
+  saveState(state: StoreState, dirty?: Set<keyof StoreState>): Promise<void>;
 
   // Granular saves — append-only where the ontology requires it.
   saveSource(source: KnowledgeSource): Promise<void>;

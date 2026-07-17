@@ -24,6 +24,37 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-17
+- **LIFEOS-021 — Unified graph & persistence scaling: implemented.** An
+  architecture-strengthening sprint — NO new end-user feature, NO AI, NO new
+  endpoints, deterministic-first and NON-BREAKING (every prior regression suite
+  re-runs green). (1) Unified reference index (`lib/graph/references.ts`): one
+  `buildGraphEdges` pass enumerates EVERY explicit reference across all record
+  types, tagged by relation (referenced-by/used-in/investigated-by/authored-
+  from/mentioned-in/supports/contradicts/related-to/derived-from/cites/part-of)
+  — nothing inferred. (2) Knowledge graph service + relationship API
+  (`lib/graph/index.ts`): buildGraph, lookup, forward/backReferences
+  (categorized), relationshipsOf, dependencyChain, provenance, parents/children,
+  and integrity (brokenReferences/orphanRecords/duplicateIds). No viz, no
+  embeddings, no AI. (3) Incremental persistence: dirty domains computed by
+  immutable-array reference equality vs the last synced snapshot (ZERO store
+  changes); `saveState(state, dirty?)` gains an optional dirty set; SupabaseAdapter
+  pushes only dirty tables when supplied, full state otherwise (backward
+  compatible); local fallback + offline preserved. (4) Performance layer
+  (`lib/perf/profile.ts`): deterministic `profile()` + `measureStore()`. (5)
+  Store modularization (`lib/stores/*.ts`): domain FACADES (knowledge/research/
+  author/world/reasoning/decision/graph) re-exporting each domain's API — a
+  justified non-breaking choice (physically splitting the 2200-line store would
+  touch ~25 imports and risk the suite, which the sprint forbids). (6)
+  Developer diagnostics (`app/diagnostics/page.tsx`, dev-only): counts, dirty
+  domains, sync queue, graph size, integrity, hydration/migration status, perf.
+  Migration `0016_graph_and_incremental_sync.sql`: additive updated_at indexes +
+  own-rows `sync_meta` cursor table (0001–0015 untouched). Verified: **15/15
+  graph/diagnostics checks** + **ALL prior suites re-run green** (research 21,
+  authoring 23, world 21, formation 26, decision 34, semantic 19, review,
+  threads, inquiry, compare, retrieval, reason, qa3, pdf, long-source), zero
+  runtime errors; `lint`/`build` green. Incremental remote push + sync_meta are
+  code-complete but credential-pending. Still one AI route (no new task/endpoint).
+- Date: 2026-07-17
 - **LIFEOS-020 — Research workspace: implemented.** A structured environment to
   investigate a question BEFORE writing conclusions. **Not** autonomous
   research, **not** web browsing, **not** an agent — evidence-first,
@@ -1523,3 +1554,24 @@ scope or order.
   `research_projects` persistence is code-complete but credential-pending.
   README unchanged. No agents, autonomous research, web browsing, chatbot,
   notifications, auto Constitution changes, or new AI routes beyond `/api/ai`.
+- 2026-07-17 — Implemented **LIFEOS-021 unified graph and persistence** (base:
+  merged LIFEOS-020 on `main`; branch restarted from `origin/main`). An
+  architecture sprint — deterministic, no AI, no new endpoints, non-breaking.
+  New: `lib/graph/{references,index}.ts` (unified reverse-reference index +
+  knowledge-graph/relationship API with integrity checks),
+  `lib/perf/profile.ts` (deterministic profiling), `lib/stores/{index,knowledge,
+  research,author,world,reasoning,decision,graph}.ts` (domain facade modules
+  re-exporting the store API), `app/diagnostics/page.tsx` (dev-only diagnostics),
+  `supabase/migrations/0016_graph_and_incremental_sync.sql` (additive updated_at
+  indexes + own-rows `sync_meta`). Modified (backward-compatible): `lib/adapters/
+  types.ts` (`saveState(state, dirty?)`), `lib/persistence.ts` (dirty-domain
+  diffing by immutable-array reference equality; `getSyncDiagnostics`;
+  lastSyncedState baseline), `lib/adapters/{localAdapter,supabaseAdapter}.ts`
+  (dirty-gated per-table upserts; local ignores dirty). No store mutation code
+  changed. Verified 15/15 graph/diagnostics (dev) + EVERY prior regression suite
+  re-run green (research 21, authoring 23, world 21, formation 26, decision 34,
+  semantic 19, review, threads, inquiry, compare, retrieval, reason, qa3, pdf,
+  long-source), zero runtime errors; `lint`=0, `build`=0. Incremental remote
+  push + sync_meta indexes are code-complete but credential-pending. README
+  unchanged. No agents, AI, endpoints, visualization, embeddings, or breaking
+  changes.
