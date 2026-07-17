@@ -27,6 +27,7 @@ export const PIPELINE_VERSION = 1;
 function kindOf(state: StoreState, id: string): string {
   if (id.startsWith("decision-config:")) return "configuration";
   if (id.startsWith("formation-config:")) return "reflection-content";
+  if (id.startsWith("concept-config:")) return "concept-definition";
   if (state.beliefs.some((b) => b.id === id)) return "belief";
   if (state.sources.some((s) => s.id === id)) return "source";
   if (state.comparisons.some((c) => c.id === id)) return "comparison";
@@ -38,6 +39,9 @@ function kindOf(state: StoreState, id: string): string {
   if (state.practices.some((p) => p.id === id)) return "practice";
   if (state.decisions.some((d) => d.id === id)) return "decision";
   if (state.formationSessions.some((f) => f.id === id)) return "reflection";
+  if (state.concepts.some((c) => c.id === id)) return "concept";
+  if (state.principles.some((p) => p.id === id)) return "principle";
+  if (state.frameworks.some((f) => f.id === id)) return "framework";
   return "unknown";
 }
 
@@ -95,6 +99,25 @@ export function hashOfRecordId(state: StoreState, id: string): string {
   }
   const fs = state.formationSessions.find((x) => x.id === id);
   if (fs) return hashText(`${fs.updatedAt}|${fs.status}|${fs.reflection.length}|${fs.judgments.length}`);
+  // Concept-configuration dep: changes when the concept's own content/links change.
+  if (id.startsWith("concept-config:")) {
+    const c = state.concepts.find((x) => x.id === id.slice("concept-config:".length));
+    if (!c) return "";
+    return hashText(
+      JSON.stringify([
+        c.name, c.aliases, c.definition, c.description,
+        c.relatedBeliefs, c.relatedThreads, c.relatedSources, c.relatedPractices,
+        c.parentConcepts, c.childConcepts, c.relatedConcepts, c.opposingConcepts,
+        c.principleIds, c.questions,
+      ]),
+    );
+  }
+  const con = state.concepts.find((x) => x.id === id);
+  if (con) return hashText(`${con.updatedAt}|${con.status}|${con.definition.length}|${con.history.length}`);
+  const pr = state.principles.find((x) => x.id === id);
+  if (pr) return hashText(`${pr.updatedAt}|${pr.status}|${pr.beliefIds.length}|${pr.conceptIds.length}`);
+  const fw = state.frameworks.find((x) => x.id === id);
+  if (fw) return hashText(`${fw.updatedAt}|${fw.status}|${fw.conceptIds.length}|${fw.principleIds.length}`);
   return "";
 }
 
@@ -131,6 +154,14 @@ export function decisionDeps(d: import("@/types/mvp").Decision): string[] {
 export function formationDeps(s: import("@/types/mvp").FormationSession): string[] {
   return [...s.evidence.map((e) => e.id), `formation-config:${s.id}`];
 }
+/** Concept deps: its linked records + its own definition/links (concept-config). */
+export function conceptDeps(c: import("@/types/mvp").Concept): string[] {
+  return [
+    ...c.relatedBeliefs, ...c.relatedThreads, ...c.relatedSources, ...c.relatedPractices,
+    ...c.parentConcepts, ...c.childConcepts, ...c.relatedConcepts, ...c.opposingConcepts,
+    `concept-config:${c.id}`,
+  ];
+}
 
 const KIND_NOUN: Record<string, [string, string]> = {
   belief: ["belief was revised", "beliefs were revised"],
@@ -145,6 +176,10 @@ const KIND_NOUN: Record<string, [string, string]> = {
   decision: ["earlier decision changed", "earlier decisions changed"],
   configuration: ["criterion or option changed", "criteria or options changed"],
   "reflection-content": ["your reflection changed", "your reflection changed"],
+  concept: ["concept changed", "concepts changed"],
+  principle: ["principle changed", "principles changed"],
+  framework: ["framework changed", "frameworks changed"],
+  "concept-definition": ["concept definition changed", "concept definitions changed"],
   unknown: ["record changed", "records changed"],
 };
 

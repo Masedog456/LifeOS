@@ -59,6 +59,10 @@ function normalize(partial: Partial<StoreState> | null): StoreState {
     embeddings: partial?.embeddings ?? [],
     decisions: partial?.decisions ?? [],
     formationSessions: partial?.formationSessions ?? [],
+    concepts: partial?.concepts ?? [],
+    conceptRelationships: partial?.conceptRelationships ?? [],
+    principles: partial?.principles ?? [],
+    frameworks: partial?.frameworks ?? [],
   };
 }
 

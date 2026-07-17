@@ -511,6 +511,56 @@ Constitution, a decision, or a thread automatically.
   `0012_reflective_practice.sql`, own-rows RLS). Entry points: Nav (Reflect),
   Constitution, Megathreads, Decisions, Inquiry, Library, Review.
 
+## Worldview & concept graph (LIFEOS-018 — implemented)
+
+The conceptual backbone: a model of the user's evolving understanding of
+reality — concepts, the relationships between them, reusable principles, and
+the frameworks that organize them. **Not** a graph visualization (everything
+is text lists), **not** embeddings, **not** agents. Deterministic-first and
+human-reviewed: nothing is inferred silently, and nothing changes a belief or
+the Constitution.
+
+- **Concept** (`Concept`). name, aliases, definition, description, cross-type
+  links (beliefs/threads/sources/practices), denormalized concept↔concept
+  structure (parent/child/related/opposing — maintained ONLY by approved
+  relationships), principle links, open questions, append-only `history`,
+  status, and a freshness fingerprint.
+- **Relationship** (`ConceptRelationship`, first-class). A richly-annotated
+  edge with one of 12 types (supports, depends_on, contradicts, extends,
+  refines, contains, requires, explains, analogous_to, historically_related,
+  terminologically_related, part_of), a required `reason`, `citations`,
+  `confidence`, `source`, and an `approved` flag. Proposed edges stay off the
+  graph until a human approves; approval maps the type onto the two concepts'
+  structural arrays (`lib/world/relationships.ts`). Nothing inferred silently.
+- **Principle** (`Principle`, Phase 6). Reusable, many-to-many with beliefs
+  and concepts — a principle supports many beliefs; a belief derives from many
+  principles.
+- **Framework** (`Framework`, Phase 5). A worldview layer
+  (framework/tradition/school/paradigm/map) that ORGANIZES concepts and
+  principles with append-only membership history. Frameworks never own beliefs.
+- **Extraction** (`lib/world/extract.ts`, Phase 4). Deterministic candidates
+  from the user's own material (source key-concepts, belief themes, concept-
+  seeded threads); then one `concept_extract` AI call proposes new concepts,
+  missing links, duplicates, missing definitions, possible principles, and
+  worldview clusters. Validation (`lib/world/schema.ts`) bounds shapes, clamps
+  relationship types, and filters citations to real record ids. Every proposal
+  is REVIEWABLE — nothing is applied automatically. Honest mock offline.
+- **Tensions** (`lib/world/tensions.ts`, Phase 7). Deterministic detection of
+  isolated concepts, unsupported concepts, duplicates (name/alias/definition
+  overlap), circular definitions (parent cycles + definition name-reference
+  cycles), contradictory principles, and framework overlap. Nothing resolves
+  automatically — each is an invitation to look.
+- **Evolution + timeline** (`lib/world/timeline.ts`, Phase 8). Every concept/
+  relationship/principle/framework change is append-only; a derived, read-only
+  timeline shows the model's evolution.
+- **Freshness.** A concept carries a fingerprint over its linked records AND a
+  `concept-config:` dep (definition + links), so "concept definition changed"
+  surfaces. "Review" recomputes it with no AI call.
+- Persisted as `concepts` / `concept_relationships` / `principles` /
+  `frameworks` (migration `0013_world_model.sql`, own-rows RLS). UI: `/world`
+  (Concepts / Frameworks / Principles / Tensions / Review / Timeline tabs) and
+  `/world/concept/[id]`. Entry points: Nav (World), Constitution, Megathreads.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

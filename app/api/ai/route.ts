@@ -34,6 +34,7 @@ import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFor
 import { mockReasoning } from "@/lib/mockReasoning";
 import { mockDecision, type MockDecisionContext } from "@/lib/mockDecision";
 import { mockFormationSynthesis, type MockFormationContext } from "@/lib/mockFormationSession";
+import { mockWorld } from "@/lib/mockWorld";
 
 export const maxDuration = 30;
 export const runtime = "nodejs";
@@ -58,7 +59,8 @@ type Task =
   | "reasoning_verify"
   | "decision_synthesis"
   | "decision_verify"
-  | "formation_synthesis";
+  | "formation_synthesis"
+  | "concept_extract";
 
 const ALLOWED_TASKS = new Set<Task>([
   "beliefs",
@@ -81,6 +83,7 @@ const ALLOWED_TASKS = new Set<Task>([
   "decision_synthesis",
   "decision_verify",
   "formation_synthesis",
+  "concept_extract",
 ]);
 
 const MAX_INPUT_CHARS = 50_000;
@@ -535,6 +538,39 @@ function formationPrompt(input: AiInput): string {
   ].filter(Boolean).join("\n");
 }
 
+function conceptExtractPrompt(input: AiInput): string {
+  return [
+    "You are helping a person model their evolving understanding of reality as a",
+    "graph of CONCEPTS. You do NOT decide what they believe. You PROPOSE items",
+    "for their review — nothing you output is applied automatically.",
+    "Use ONLY the records below; cite them by id in citations.",
+    "",
+    "Propose, where genuinely present in the records:",
+    "- new_concept: a recurring idea not yet modeled as a concept.",
+    "- missing_link: a relationship between two concepts, with a relationshipType",
+    "  from: supports, depends_on, contradicts, extends, refines, contains,",
+    "  requires, explains, analogous_to, historically_related,",
+    "  terminologically_related, part_of.",
+    "- duplicate_concept: two concepts that may be the same.",
+    "- missing_definition: a concept lacking a definition.",
+    "- possible_principle: a reusable principle a belief may express.",
+    "- worldview_cluster: concepts that may belong to one framework/tradition.",
+    "",
+    "RULES:",
+    "- Ground every proposal in the listed records; cite their ids. Do NOT invent",
+    "  concepts, links, or sources absent from the records.",
+    "- Preserve genuine distinctions — do NOT collapse different traditions.",
+    "- Be conservative: a missed proposal is better than a fabricated one.",
+    "",
+    "Return ONLY a JSON object: { \"proposals\": [ { \"kind\": string, \"statement\":",
+    "string, \"concepts\": string[], \"relationshipType\"?: string, \"suggestion\"?:",
+    "string, \"citations\": string[] } ] }",
+    "",
+    "Records:",
+    evidenceBlock(input.evidence),
+  ].join("\n");
+}
+
 function promptFor(input: AiInput): string {
   const src = `Source text:\n"""\n${input.text.slice(0, MAX_MODEL_CHARS)}\n"""`;
   switch (input.task) {
@@ -551,6 +587,8 @@ function promptFor(input: AiInput): string {
       return decisionPrompt(input);
     case "formation_synthesis":
       return formationPrompt(input);
+    case "concept_extract":
+      return conceptExtractPrompt(input);
     case "dialectic":
       return dialecticPrompt(input);
     case "thread_synthesis":
@@ -649,6 +687,8 @@ function mockFor(input: AiInput): unknown {
       return mockDecision({ evidence: input.evidence, context: parseDecisionContext(input.draft) });
     case "formation_synthesis":
       return mockFormationSynthesis({ evidence: input.evidence, context: parseFormationContext(input.draft) });
+    case "concept_extract":
+      return mockWorld({ evidence: input.evidence });
     case "reasoning_verify":
     case "decision_verify":
       return { cautions: [], removeStatements: [] };
@@ -682,6 +722,7 @@ function parseFor(input: AiInput, raw: string): unknown {
     case "decision_synthesis":
     case "decision_verify":
     case "formation_synthesis":
+    case "concept_extract":
       // Return the raw parsed object; strict validation happens client-side
       // (lib/comparison, lib/dialectic, lib/megathread, lib/formation,
       // lib/reasoning, lib/decision).
@@ -698,7 +739,7 @@ function parseFor(input: AiInput, raw: string): unknown {
 function maxTokensFor(task: Task): number {
   // Structured comparison/dialectic/synthesis outputs are large; more room.
   if (task === "dialectic" || task === "decision_synthesis") return 4096;
-  if (task === "compare" || task === "thread_synthesis" || task === "reasoning_synthesis" || task === "formation_synthesis") return 3072;
+  if (task === "compare" || task === "thread_synthesis" || task === "reasoning_synthesis" || task === "formation_synthesis" || task === "concept_extract") return 3072;
   return 1024;
 }
 
@@ -787,7 +828,7 @@ export async function POST(request: Request) {
     "compare", "compare_verify", "dialectic", "dialectic_verify", "thread_synthesis",
     "practice_suggest", "weekly_synthesis", "alignment_reflection",
     "reasoning_synthesis", "reasoning_verify", "decision_synthesis", "decision_verify",
-    "formation_synthesis",
+    "formation_synthesis", "concept_extract",
   ]);
   const hasInput =
     input.task === "reduce_summary"

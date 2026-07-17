@@ -17,10 +17,14 @@ import type {
   Belief,
   Capture,
   Comparison,
+  Concept,
+  ConceptRelationship,
   Decision,
   EmbeddingRecord,
   FormationSession,
+  Framework,
   Inquiry,
+  Principle,
   Megathread,
   PracticeCandidate,
   ReasoningQuery,
@@ -54,7 +58,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -74,6 +78,10 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("embeddings").select("*"),
         this.client.from("decisions").select("*").order("created_at", { ascending: false }),
         this.client.from("formation_sessions").select("*").order("created_at", { ascending: false }),
+        this.client.from("concepts").select("*").order("created_at", { ascending: false }),
+        this.client.from("concept_relationships").select("*").order("created_at", { ascending: false }),
+        this.client.from("principles").select("*").order("created_at", { ascending: false }),
+        this.client.from("frameworks").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -94,7 +102,11 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       reasonings.error ||
       embeddings.error ||
       decisions.error ||
-      formationSessions.error;
+      formationSessions.error ||
+      concepts.error ||
+      conceptRelationships.error ||
+      principles.error ||
+      frameworks.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -126,6 +138,10 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       embeddings: (embeddings.data ?? []).map(rowToEmbedding),
       decisions: (decisions.data ?? []).map(rowToDecision),
       formationSessions: (formationSessions.data ?? []).map(rowToFormationSession),
+      concepts: (concepts.data ?? []).map(rowToConcept),
+      conceptRelationships: (conceptRelationships.data ?? []).map(rowToRelationship),
+      principles: (principles.data ?? []).map(rowToPrinciple),
+      frameworks: (frameworks.data ?? []).map(rowToFramework),
     };
   }
 
@@ -192,6 +208,18 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (state.formationSessions.length) {
       await this.throwing(this.client.from("formation_sessions").upsert(state.formationSessions.map(formationSessionToRow)));
     }
+    if (state.concepts.length) {
+      await this.throwing(this.client.from("concepts").upsert(state.concepts.map(conceptToRow)));
+    }
+    if (state.conceptRelationships.length) {
+      await this.throwing(this.client.from("concept_relationships").upsert(state.conceptRelationships.map(relationshipToRow)));
+    }
+    if (state.principles.length) {
+      await this.throwing(this.client.from("principles").upsert(state.principles.map(principleToRow)));
+    }
+    if (state.frameworks.length) {
+      await this.throwing(this.client.from("frameworks").upsert(state.frameworks.map(frameworkToRow)));
+    }
     this.lastState = "synced";
     this.lastError = undefined;
   }
@@ -254,6 +282,10 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("concept_relationships").delete().eq("user_id", uid));
+    await this.throwing(this.client.from("frameworks").delete().eq("user_id", uid));
+    await this.throwing(this.client.from("principles").delete().eq("user_id", uid));
+    await this.throwing(this.client.from("concepts").delete().eq("user_id", uid));
     await this.throwing(this.client.from("formation_sessions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("decisions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("embeddings").delete().eq("user_id", uid));
@@ -870,6 +902,154 @@ function rowToFormationSession(r: any): FormationSession {
     coverage: r.coverage ?? null,
     partial: Boolean(r.partial),
     verified: Boolean(r.verified),
+  };
+}
+
+function conceptToRow(c: Concept) {
+  return {
+    id: c.id,
+    name: c.name,
+    aliases: c.aliases,
+    definition: c.definition,
+    description: c.description,
+    related_beliefs: c.relatedBeliefs,
+    related_threads: c.relatedThreads,
+    related_sources: c.relatedSources,
+    related_practices: c.relatedPractices,
+    parent_concepts: c.parentConcepts,
+    child_concepts: c.childConcepts,
+    related_concepts: c.relatedConcepts,
+    opposing_concepts: c.opposingConcepts,
+    principle_ids: c.principleIds,
+    questions: c.questions,
+    history: c.history,
+    status: c.status,
+    fingerprint: c.fingerprint ?? null,
+    source: c.source,
+    created_at: c.createdAt,
+    updated_at: c.updatedAt,
+  };
+}
+function rowToConcept(r: any): Concept {
+  return {
+    id: r.id,
+    name: r.name ?? "",
+    aliases: (r.aliases ?? []) as string[],
+    definition: r.definition ?? "",
+    description: r.description ?? "",
+    relatedBeliefs: (r.related_beliefs ?? []) as string[],
+    relatedThreads: (r.related_threads ?? []) as string[],
+    relatedSources: (r.related_sources ?? []) as string[],
+    relatedPractices: (r.related_practices ?? []) as string[],
+    parentConcepts: (r.parent_concepts ?? []) as string[],
+    childConcepts: (r.child_concepts ?? []) as string[],
+    relatedConcepts: (r.related_concepts ?? []) as string[],
+    opposingConcepts: (r.opposing_concepts ?? []) as string[],
+    principleIds: (r.principle_ids ?? []) as string[],
+    questions: (r.questions ?? []) as string[],
+    history: (r.history ?? []) as Concept["history"],
+    status: (r.status ?? "active") as Concept["status"],
+    fingerprint: (r.fingerprint ?? undefined) as Concept["fingerprint"],
+    source: (r.source ?? "user") as Concept["source"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function relationshipToRow(r: ConceptRelationship) {
+  return {
+    id: r.id,
+    from_concept_id: r.fromConceptId,
+    to_concept_id: r.toConceptId,
+    type: r.type,
+    reason: r.reason,
+    citations: r.citations,
+    confidence: r.confidence,
+    source: r.source,
+    approved: r.approved,
+    history: r.history,
+    created_at: r.createdAt,
+    updated_at: r.updatedAt,
+  };
+}
+function rowToRelationship(r: any): ConceptRelationship {
+  return {
+    id: r.id,
+    fromConceptId: r.from_concept_id,
+    toConceptId: r.to_concept_id,
+    type: r.type,
+    reason: r.reason ?? "",
+    citations: (r.citations ?? []) as string[],
+    confidence: (r.confidence ?? "medium") as ConceptRelationship["confidence"],
+    source: (r.source ?? "user") as ConceptRelationship["source"],
+    approved: Boolean(r.approved),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    history: (r.history ?? []) as ConceptRelationship["history"],
+  };
+}
+
+function principleToRow(p: Principle) {
+  return {
+    id: p.id,
+    statement: p.statement,
+    description: p.description ?? null,
+    concept_ids: p.conceptIds,
+    belief_ids: p.beliefIds,
+    citations: p.citations,
+    status: p.status,
+    history: p.history,
+    source: p.source,
+    fingerprint: p.fingerprint ?? null,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+  };
+}
+function rowToPrinciple(r: any): Principle {
+  return {
+    id: r.id,
+    statement: r.statement ?? "",
+    description: r.description ?? undefined,
+    conceptIds: (r.concept_ids ?? []) as string[],
+    beliefIds: (r.belief_ids ?? []) as string[],
+    citations: (r.citations ?? []) as string[],
+    status: (r.status ?? "active") as Principle["status"],
+    history: (r.history ?? []) as Principle["history"],
+    source: (r.source ?? "user") as Principle["source"],
+    fingerprint: (r.fingerprint ?? undefined) as Principle["fingerprint"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function frameworkToRow(f: Framework) {
+  return {
+    id: f.id,
+    name: f.name,
+    kind: f.kind,
+    description: f.description,
+    concept_ids: f.conceptIds,
+    principle_ids: f.principleIds,
+    status: f.status,
+    history: f.history,
+    source: f.source,
+    created_at: f.createdAt,
+    updated_at: f.updatedAt,
+  };
+}
+function rowToFramework(r: any): Framework {
+  return {
+    id: r.id,
+    name: r.name ?? "",
+    kind: (r.kind ?? "framework") as Framework["kind"],
+    description: r.description ?? "",
+    conceptIds: (r.concept_ids ?? []) as string[],
+    principleIds: (r.principle_ids ?? []) as string[],
+    status: (r.status ?? "active") as Framework["status"],
+    history: (r.history ?? []) as Framework["history"],
+    source: (r.source ?? "user") as Framework["source"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
 }
 

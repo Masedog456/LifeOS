@@ -22,6 +22,7 @@ import { mockAlignment, mockPractices, mockWeeklySynthesis } from "@/lib/mockFor
 import { mockReasoning } from "@/lib/mockReasoning";
 import { mockDecision, type MockDecisionContext } from "@/lib/mockDecision";
 import { mockFormationSynthesis, type MockFormationContext } from "@/lib/mockFormationSession";
+import { mockWorld } from "@/lib/mockWorld";
 import type { EvidenceItem } from "@/types/mvp";
 
 export type AiSource = "ai" | "mock";
@@ -237,5 +238,15 @@ export function formationSynthesis(args: { evidence: EvidenceItem[]; context: Mo
       draft: JSON.stringify(args.context),
     },
     () => mockFormationSynthesis({ evidence: args.evidence, context: args.context }),
+  );
+}
+
+// ---------- Worldview & concept graph (LIFEOS-018) ----------
+
+/** One structured world-model proposal call. RAW object (validated by caller). */
+export function proposeWorldModel(args: { evidence: EvidenceItem[] }) {
+  return call<unknown>(
+    { task: "concept_extract", evidence: toWire(args.evidence) },
+    () => mockWorld({ evidence: args.evidence }),
   );
 }

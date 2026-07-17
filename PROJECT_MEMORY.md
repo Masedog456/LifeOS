@@ -23,6 +23,45 @@ pending Product Owner approval).
 
 ## 2. Current Sprint Status
 
+- Date: 2026-07-17
+- **LIFEOS-018 — Worldview & concept graph: implemented.** The conceptual
+  backbone of LifeOS — a model of the user's evolving understanding of reality.
+  **Not** a graph visualization, **not** embeddings, **not** agents:
+  deterministic-first, human-reviewed, nothing inferred silently, nothing
+  changes a belief or the Constitution. Four new store arrays: `Concept`
+  (name/aliases/definition/description, cross-type links to beliefs/threads/
+  sources/practices, denormalized parent/child/related/opposing concept
+  structure maintained ONLY via approved relationships, principle links, open
+  questions, append-only history, fingerprint), `ConceptRelationship`
+  (first-class edge with 12 types + required reason + citations + confidence +
+  source + `approved` flag; only approved edges shape the graph),
+  `Principle` (reusable, many-to-many with beliefs and concepts), `Framework`
+  (framework/tradition/school/paradigm/map that ORGANIZES concepts/principles,
+  never owns beliefs, append-only membership history). Extraction
+  (`lib/world/extract.ts`): deterministic candidates from source key-concepts/
+  belief themes/concept-seeded threads, then one `concept_extract` AI call
+  proposing new concepts/missing links/duplicates/missing definitions/possible
+  principles/worldview clusters; validation (`lib/world/schema.ts`) bounds
+  shapes, clamps relationship types, filters citations to real ids; every
+  proposal reviewable; honest mock offline. Tensions (`lib/world/tensions.ts`):
+  deterministic isolated/unsupported/duplicate concepts, circular definitions,
+  contradictory principles, framework overlap — never auto-resolved. Evolution
+  timeline (`lib/world/timeline.ts`): derived, read-only, chronological.
+  Relationship approval (`lib/world/relationships.ts`) maps each type onto the
+  concepts' structural arrays. Freshness: concept fingerprint over linked
+  records + a `concept-config:` dep; "review" recomputes with no AI. Single AI
+  route preserved (`concept_extract` added). Persistence: 4 arrays + adapters +
+  additive migration `0013_world_model.sql` (4 tables, own-rows RLS, rerunnable;
+  0001–0012 untouched). New `/world` (Concepts/Frameworks/Principles/Tensions/
+  Review/Timeline tabs) + `/world/concept/[id]`; components ConceptRelationships
+  (approve/reject), TensionList, WorldTimeline; Nav "World"; entry points from
+  Constitution ("Model as a concept") and Threads. Verified: **21/21 world
+  checks** + all prior suites (26/26 formation, 34/34 decision, 19/19 semantic,
+  review, threads, inquiry, compare, retrieval, reason, qa3, pdf, long-source),
+  zero runtime errors; `lint`/`build` green. Supabase world tables sync/RLS/
+  cross-device is code-complete but credential-pending. Still one AI route; no
+  agents, graph visualization, embeddings, notifications, or auto Constitution
+  changes.
 - Date: 2026-07-16
 - **LIFEOS-017 — Reflective practice & daily formation: implemented.** A place
   the user returns to in order to examine themselves, integrate experience, and
@@ -1316,3 +1355,32 @@ scope or order.
   code-complete but credential-pending. README unchanged. No agents, graph UI,
   notifications, gamification, auto Constitution changes, or new AI routes
   beyond `/api/ai`.
+- 2026-07-17 — Implemented **LIFEOS-018 world model** (base: merged LIFEOS-017
+  on `main`; branch restarted from `origin/main`). New:
+  `lib/world/{relationships,extract,tensions,schema,run,timeline}.ts` (12-type
+  relationship metadata + structural mapping; deterministic concept-candidate
+  extraction + evidence packet; deterministic tension detection; proposal
+  validation; proposal orchestrator; derived read-only evolution timeline),
+  `lib/mockWorld.ts`, `components/{ConceptRelationships,TensionList,WorldTimeline}.tsx`,
+  `app/world/page.tsx` (Concepts/Frameworks/Principles/Tensions/Review/Timeline
+  tabs) + `app/world/concept/[id]/page.tsx`,
+  `supabase/migrations/0013_world_model.sql` (4 tables, own-rows RLS). Extended
+  `types/mvp.ts` (`Concept`, `ConceptRelationship` + 12 types, `Principle`,
+  `Framework` + kinds, `WorldProposal`, `WorldTension`, `WorldTimelineItem`,
+  `StoreState.{concepts,conceptRelationships,principles,frameworks}`),
+  `app/api/ai/route.ts` (`concept_extract`, 3072 max_tokens),
+  `lib/aiClient.ts` (`proposeWorldModel`),
+  `lib/freshness/fingerprint.ts` (resolves concepts/principles/frameworks +
+  `concept-config:` dep; `conceptDeps`; new change nouns),
+  `lib/mvpStore.ts` (4 arrays + concept/relationship(propose→approve)/principle/
+  framework actions — approval is the ONLY way an edge enters the graph),
+  `lib/persistence.ts`, `lib/adapters/{localAdapter,supabaseAdapter}.ts`
+  (load/save/delete + row mappers). Entry points: `components/Nav.tsx`
+  ("World"), `app/constitution/page.tsx` ("Model as a concept"),
+  `app/threads/[id]/page.tsx`. Verified 21/21 world + all prior suites
+  (formation 26, decision 34, semantic 19, review, threads, inquiry, compare,
+  retrieval, reason, qa3, pdf, long-source), zero runtime errors; `lint`=0,
+  `build`=0. Supabase world-model persistence is code-complete but
+  credential-pending. README unchanged. No agents, graph visualization,
+  embeddings, notifications, auto Constitution changes, or new AI routes beyond
+  `/api/ai`.
