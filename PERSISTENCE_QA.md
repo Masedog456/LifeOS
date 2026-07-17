@@ -135,7 +135,16 @@
     existing rows, other tables, or their RLS. Not autonomous, not web-browsing,
     not an agent — evidence-first, deterministic-first, human-directed; gap
     detection never resolves anything and hypotheses are never auto-selected.
-16. **Project Settings → API**: copy the **Project URL** and the **anon
+16. Then run `supabase/migrations/0016_graph_and_incremental_sync.sql`
+    (LIFEOS-021 — supports incremental sync/load: additive per-user `updated_at`
+    (or `added_at`/`created_at`) indexes on the domain tables so a loader can
+    fetch only rows changed since a cursor, plus a `sync_meta` table (own-rows
+    RLS) recording per-user/per-domain sync cursors. The knowledge-graph layer
+    itself is DERIVED in memory and needs no tables). Additive and rerunnable;
+    it does not modify migrations 0001–0015, any existing row, table, or RLS
+    policy — the whole-state sync path keeps working unchanged, and the new
+    incremental path pushes only changed domains.
+17. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -366,6 +375,24 @@ changes runtime behavior.
       (23/23). All prior suites still green (world 21, formation 26, decision 34,
       semantic 19, review, threads, inquiry, compare, retrieval, reason, qa3,
       pdf, long-source).
+- [x] **Unified graph & incremental persistence (LIFEOS-021):** the derived
+      knowledge graph builds correct nodes + edges from EXPLICIT references only
+      (verified 7 records → 7 nodes → 7 edges across capture/proposal/belief/
+      concept/authoring/research links); integrity is clean on a well-formed
+      store (0 broken / 0 duplicate / 0 orphan) and a dangling reference is
+      detected (concept → non-existent id → 1 broken reference, listed); the
+      deterministic diagnostics page (dev-only) renders record counts, graph
+      size, sync mode/dirty-domains, integrity, performance timings, largest
+      domains, and the migration list incl. 0016; incremental sync tracks dirty
+      domains by immutable-array reference equality (zero store changes) and the
+      SupabaseAdapter pushes only dirty tables when a dirty set is supplied
+      (full push otherwise — backward compatible); local fallback + offline
+      preserved. (15/15 graph/diagnostics checks, dev build.) **The refactor is
+      non-breaking: ALL prior suites re-run green** — research 21, authoring 23,
+      world 21, formation 26, decision 34, semantic 19, review, threads,
+      inquiry, compare, retrieval, reason, qa3, pdf, long-source. Incremental
+      remote push (dirty-table gating) and the `sync_meta`/`updated_at` indexes
+      are code-complete and credential-pending like all remote sync.
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
