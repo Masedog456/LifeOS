@@ -663,6 +663,49 @@ by REUSING earlier subsystems rather than duplicating them.
   / Timeline / Gaps / Export tabs, with filter + search). Entry points: Nav
   (Research), Megathreads, Constitution.
 
+## Unified graph & incremental persistence (LIFEOS-021 — implemented)
+
+An architecture-strengthening sprint: no new end-user feature, no AI, no new
+endpoints. It makes every module faster and more connected and readies the
+persistence layer for scale — **deterministic-first and non-breaking** (all
+prior regression suites re-run green).
+
+- **Unified reference index** (`lib/graph/references.ts`, Phase 2). One pass
+  (`buildGraphEdges`) enumerates EVERY explicit reference across all record
+  types, tagged by relation (referenced-by / used-in / investigated-by /
+  authored-from / mentioned-in / supports / contradicts / related-to /
+  derived-from / cites / part-of). An edge exists only where a record literally
+  stores another record's id — nothing inferred.
+- **Knowledge graph service + relationship API** (`lib/graph/index.ts`, Phase
+  3 + 7). One deterministic query layer: `buildGraph`, `lookup`,
+  `forwardReferences`, `backReferences` (categorized), `relationshipsOf`,
+  `dependencyChain`, `provenance` (to root sources), `parents`/`children`, and
+  integrity (`brokenReferences`, `orphanRecords`, `duplicateIds`). Replaces
+  ad-hoc reverse lookups. No visualization, no embeddings, no AI.
+- **Incremental persistence** (`lib/persistence.ts` + adapters, Phase 4). The
+  store mutates immutably, so an unchanged domain keeps the SAME array
+  reference — dirty domains are computed by reference-equality against the last
+  synced snapshot with **zero store changes**. `saveState(state, dirty?)` gains
+  an optional dirty set; the SupabaseAdapter pushes only dirty tables when it's
+  supplied and the whole state otherwise (backward compatible). Local fallback
+  and offline-first are preserved (localStorage stays a single blob).
+- **Performance layer** (`lib/perf/profile.ts`, Phase 5). Deterministic
+  `profile()` timing + `measureStore()` (counts, byte sizes, and timings for
+  graph build/lookup, integrity, timeline, and assembly).
+- **Store modularization** (`lib/stores/*.ts`, Phase 6). Domain FACADES
+  (knowledge / research / author / world / reasoning / decision / graph)
+  re-export each domain's public API. A deliberate, justified non-breaking
+  choice: physically splitting the 2200-line store would touch ~25 page imports
+  and risk the suite, which the sprint forbids — the facades give a modular API
+  surface while `useStore()` remains the single source of state.
+- **Developer diagnostics** (`app/diagnostics/page.tsx`, Phase 8). Dev-only,
+  read-only: record counts, dirty domains, sync queue, graph size, integrity
+  (orphan / broken references, duplicate ids), hydration + migration status,
+  and performance metrics.
+- **Persistence.** Migration `0016_graph_and_incremental_sync.sql` — additive
+  `updated_at` indexes (incremental loads) + an own-rows `sync_meta` cursor
+  table. No table/row/RLS/migration 0001–0015 is modified.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

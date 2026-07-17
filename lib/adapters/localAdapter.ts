@@ -72,7 +72,11 @@ export class LocalPersistenceAdapter implements PersistenceAdapter {
     return raw ? read() : null;
   }
 
-  async saveState(state: StoreState): Promise<void> {
+  async saveState(state: StoreState, _dirty?: Set<keyof StoreState>): Promise<void> {
+    // localStorage is a single JSON blob keyed per browser, so a partial write
+    // is not meaningful — always persist the whole state. `dirty` is accepted
+    // for interface parity and ignored here.
+    void _dirty;
     write(state);
   }
 

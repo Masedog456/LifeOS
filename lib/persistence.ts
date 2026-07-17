@@ -23,6 +23,22 @@ const MIGRATED_KEY = "lifeos.migrated.v1";
 
 let remote: SupabasePersistenceAdapter | null = null;
 let lastSaved: StoreState | null = null;
+/** The state at the last successful remote flush — for dirty-domain diffing. */
+let lastSyncedState: StoreState | null = null;
+
+/**
+ * Which domains changed since the last successful sync. Because the store
+ * mutates immutably (`setState({...state, domain: newArray})`), an unchanged
+ * domain keeps the SAME array reference — so reference inequality per top-level
+ * key IS the dirty set, with zero cost and zero store changes (LIFEOS-021).
+ */
+function dirtyDomainsOf(next: StoreState, base: StoreState | null): Set<keyof StoreState> {
+  const dirty = new Set<keyof StoreState>();
+  for (const key of Object.keys(next) as (keyof StoreState)[]) {
+    if (!base || next[key] !== base[key]) dirty.add(key);
+  }
+  return dirty;
+}
 
 let health: PersistenceHealth = {
   mode: "local",
@@ -105,6 +121,9 @@ export function saveState(state: StoreState): void {
 /** Write locally only — used when adopting remote data, to avoid a re-push loop. */
 export function saveLocalOnly(state: StoreState): void {
   lastSaved = state;
+  // Adopted data came FROM remote, so it is already synced: baseline the diff
+  // against it so subsequent incremental flushes only push genuine changes.
+  lastSyncedState = state;
   writeLocal(state);
 }
 
@@ -118,6 +137,7 @@ export function clearState(): void {
     }
   }
   lastSaved = null;
+  lastSyncedState = null;
   if (remote) {
     setHealth({ state: "syncing" });
     remote
@@ -144,12 +164,27 @@ async function flush(): Promise<void> {
   if (!remote || !pending) return;
   const snapshot = pending;
   pending = null;
+  // Incremental sync: push only the domains that changed since the last
+  // successful flush. First sync (no baseline) pushes everything.
+  const dirty = dirtyDomainsOf(snapshot, lastSyncedState);
   try {
-    await remote.saveState(snapshot);
+    await remote.saveState(snapshot, dirty);
+    lastSyncedState = snapshot;
     setHealth({ state: "synced", error: undefined });
   } catch (e) {
     setHealth({ state: "failed", error: msg(e) });
   }
+}
+
+/** Diagnostics (LIFEOS-021, Phase 8): current dirty domains + sync-queue state. */
+export function getSyncDiagnostics(): { dirtyDomains: string[]; queued: boolean; hasBaseline: boolean; mode: string } {
+  const dirty = lastSaved ? dirtyDomainsOf(lastSaved, lastSyncedState) : new Set<string>();
+  return {
+    dirtyDomains: [...dirty] as string[],
+    queued: pending !== null,
+    hasBaseline: lastSyncedState !== null,
+    mode: remote ? "supabase" : "local",
+  };
 }
 
 /** Retry a failed sync by re-pushing the latest local state. */
