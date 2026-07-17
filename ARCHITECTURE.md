@@ -561,6 +561,58 @@ the Constitution.
   (Concepts / Frameworks / Principles / Tensions / Review / Timeline tabs) and
   `/world/concept/[id]`. Entry points: Nav (World), Constitution, Megathreads.
 
+## Knowledge synthesis & authoring (LIFEOS-019 — implemented)
+
+The synthesis layer: the user turns everything they have learned into a book,
+essay, lecture, course, research paper, blog series, guide, or a statement of
+their own philosophy. **Not** a chatbot, **not** autonomous writing —
+evidence-first, human-directed, deterministic-first. The system assembles
+evidence, proposes outlines, and drafts one section at a time on request; it
+never writes the whole work on its own and never invents a citation.
+
+- **Record** (`KnowledgeProject`). title/description/purpose/audience, `kind`,
+  status, an `assembly` (chosen evidence ids across all nine record types —
+  references, never copies), generated `outlineOptions` + the chosen outline,
+  `sections` (each a `DraftSection` with `DraftParagraph[]`, append-only
+  `versions`, and a fingerprint), an append-only project `history`, and a
+  freshness fingerprint.
+- **Assembly** (`lib/authoring/assembly.ts`, Phase 3). Deterministically
+  resolves the chosen sources/beliefs/concepts/threads/reasonings/frameworks/
+  principles/formation-sessions/decisions into a flat, provenance-bearing
+  packet whose ids ARE real record ids.
+- **Outlines** (`lib/authoring/outline.ts`, Phase 4). Per-kind deterministic
+  templates seeded with the project's own concepts/threads, plus one AI
+  candidate (`outline_generate`). Several are offered; the human chooses one,
+  which seeds empty sections.
+- **Section drafting** (`lib/authoring/draft.ts` + `schema.ts`, Phase 5/6). One
+  `section_draft` AI call over the assembled evidence produces cited paragraphs;
+  validation filters citations to real ids and marks uncited paragraphs
+  UNSUPPORTED (surfaced + removable). Eight transforms (rewrite/expand/compress/
+  clarify + academic/popular/technical/conversational) re-draft a single
+  section in a new register — never the whole work. Honest mock offline.
+- **Citations** (`lib/authoring/citations.ts`, Phase 6). Resolves ids → labels
+  + hrefs, finds unsupported statements across the project, and computes
+  coverage (how much assembled evidence is actually cited).
+- **Cross-references** (`lib/authoring/crossref.ts`, Phase 7). Deterministic
+  suggestions while writing — related concepts, missing evidence, contradictions
+  (questioned beliefs / opposing concepts both cited), older drafts, relevant
+  decisions, formation insights, and duplicate paragraphs. NEVER inserted
+  automatically.
+- **Revision history** (Phase 8). Section drafts are append-only `versions`
+  (human/ai/mock tagged); the project keeps an append-only change log. Earlier
+  text is never overwritten.
+- **Export** (`lib/authoring/export/`, Phase 9). Deterministic, **dependency-
+  free** writers for Markdown, HTML, DOCX (a store-only ZIP + minimal OOXML,
+  via a pure-TS CRC32 zip writer), and PDF (a minimal Helvetica PDF writer with
+  wrapping + pagination). All render one `ExportDoc`, so citations are preserved
+  identically as inline [n] markers + a numbered reference list.
+- **Freshness.** `projectDeps` covers every assembled evidence record, so
+  "source changed" / "belief was revised" surface against the work.
+- Persisted as `knowledge_projects` (migration `0014_authoring_engine.sql`,
+  own-rows RLS). UI: `/author` (list + create) and `/author/[id]` (assemble →
+  outline → draft/transform → citations + cross-refs + history → export). Entry
+  points: Nav (Author), Megathreads ("Write from this thread").
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

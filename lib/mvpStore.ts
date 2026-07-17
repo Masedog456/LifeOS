@@ -61,12 +61,19 @@ import type {
   FrameworkKind,
   Principle,
   RelationshipConfidence,
+  KnowledgeProject,
+  ProjectAssembly,
+  ProjectKind,
+  DraftSection,
+  DraftParagraph,
+  OutlineOption,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
 import { clearState, loadState, saveLocalOnly, saveState } from "@/lib/persistence";
-import { makeFingerprint, threadDeps, weeklyDeps, conceptDeps } from "@/lib/freshness/fingerprint";
+import { makeFingerprint, threadDeps, weeklyDeps, conceptDeps, projectDeps } from "@/lib/freshness/fingerprint";
 import { structuralMapping, slotField } from "@/lib/world/relationships";
+import { emptyAssembly } from "@/lib/authoring/assembly";
 
 /** Stable empty state — used for the server snapshot and pre-hydration client render. */
 const EMPTY_STATE: StoreState = {
@@ -89,6 +96,7 @@ const EMPTY_STATE: StoreState = {
   conceptRelationships: [],
   principles: [],
   frameworks: [],
+  knowledgeProjects: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -260,6 +268,17 @@ export function hydrate() {
           principleIds: asArray<string>(f?.principleIds),
           history: asArray<Framework["history"][number]>(f?.history),
         })),
+        knowledgeProjects: asArray<KnowledgeProject>(parsed.knowledgeProjects).map((p) => ({
+          ...p,
+          assembly: { ...emptyAssembly(), ...(p?.assembly && typeof p.assembly === "object" ? p.assembly : {}) },
+          outlineOptions: asArray<OutlineOption>(p?.outlineOptions),
+          sections: asArray<DraftSection>(p?.sections).map((s) => ({
+            ...s,
+            paragraphs: asArray<DraftParagraph>(s?.paragraphs),
+            versions: asArray<DraftSection["versions"][number]>(s?.versions),
+          })),
+          history: asArray<KnowledgeProject["history"][number]>(p?.history),
+        })),
       };
       emit();
     }
@@ -274,7 +293,7 @@ export function resetStore() {
   setState({
     captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
     comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [], formationSessions: [],
-    concepts: [], conceptRelationships: [], principles: [], frameworks: [],
+    concepts: [], conceptRelationships: [], principles: [], frameworks: [], knowledgeProjects: [],
   });
 }
 
@@ -1824,4 +1843,169 @@ export function toggleFrameworkPrinciple(frameworkId: string, principleId: strin
 
 export function frameworkById(s: StoreState, frameworkId: string): Framework | undefined {
   return s.frameworks.find((f) => f.id === frameworkId);
+}
+
+// ---------- Knowledge authoring actions (LIFEOS-019) ----------
+
+/** Create an authoring project. Evidence-first and human-directed. */
+export function createKnowledgeProject(fields: {
+  title: string;
+  kind: ProjectKind;
+  description?: string;
+  purpose?: string;
+  audience?: string;
+  assembly?: Partial<ProjectAssembly>;
+}): string {
+  const at = now();
+  const project: KnowledgeProject = {
+    id: id(),
+    title: fields.title.trim() || "Untitled project",
+    description: fields.description?.trim() ?? "",
+    purpose: fields.purpose?.trim() ?? "",
+    audience: fields.audience?.trim() ?? "",
+    kind: fields.kind,
+    status: "planning",
+    assembly: { ...emptyAssembly(), ...fields.assembly },
+    outlineOptions: [],
+    sections: [],
+    history: [{ at, note: "Project created", source: "human" }],
+    aiModel: "mock",
+    source: "mock",
+    createdAt: at,
+    updatedAt: at,
+  };
+  setState({ ...state, knowledgeProjects: [project, ...state.knowledgeProjects] });
+  return project.id;
+}
+
+function patchProject(projectId: string, patch: (p: KnowledgeProject) => KnowledgeProject, log?: { note: string; source: "human" | "ai" | "mock" }): void {
+  const at = now();
+  setState({
+    ...state,
+    knowledgeProjects: state.knowledgeProjects.map((p) => {
+      if (p.id !== projectId) return p;
+      const next = patch(p);
+      return { ...next, updatedAt: at, history: log ? [...p.history, { at, ...log }] : next.history };
+    }),
+  });
+}
+
+export function setProjectFields(
+  projectId: string,
+  fields: Partial<Pick<KnowledgeProject, "title" | "description" | "purpose" | "audience" | "kind" | "status">>,
+): void {
+  patchProject(projectId, (p) => ({ ...p, ...fields }));
+}
+
+/** Add/remove a record from the project's assembled evidence. */
+export function toggleProjectEvidence(projectId: string, field: keyof ProjectAssembly, recordId: string): void {
+  patchProject(projectId, (p) => {
+    const has = p.assembly[field].includes(recordId);
+    return { ...p, assembly: { ...p.assembly, [field]: has ? p.assembly[field].filter((x) => x !== recordId) : [...p.assembly[field], recordId] } };
+  });
+}
+
+/** Store generated outline candidates (Phase 4). */
+export function setProjectOutlines(projectId: string, options: OutlineOption[], source: "ai" | "mock"): void {
+  patchProject(projectId, (p) => ({ ...p, outlineOptions: options, status: p.status === "planning" ? "outlining" : p.status }), { note: `Generated ${options.length} outline${options.length === 1 ? "" : "s"}`, source });
+}
+
+/** Choose an outline — builds empty sections from it (does not overwrite existing sections). */
+export function chooseProjectOutline(projectId: string, outlineId: string): void {
+  patchProject(
+    projectId,
+    (p) => {
+      const outline = p.outlineOptions.find((o) => o.id === outlineId);
+      if (!outline) return p;
+      const sections: DraftSection[] = p.sections.length
+        ? p.sections
+        : outline.sections.map((s, i) => ({
+            id: id(),
+            heading: s.heading,
+            purpose: s.purpose,
+            order: i,
+            paragraphs: [],
+            versions: [],
+            source: "empty" as const,
+            updatedAt: now(),
+          }));
+      return { ...p, chosenOutlineId: outlineId, sections, status: "drafting" };
+    },
+    { note: "Outline chosen", source: "human" },
+  );
+}
+
+/** Add a blank section to the end. */
+export function addProjectSection(projectId: string, heading: string, purpose?: string): void {
+  patchProject(projectId, (p) => ({
+    ...p,
+    sections: [...p.sections, { id: id(), heading: heading.trim() || "New section", purpose, order: p.sections.length, paragraphs: [], versions: [], source: "empty", updatedAt: now() }],
+  }));
+}
+
+export function setSectionHeading(projectId: string, sectionId: string, heading: string): void {
+  patchProject(projectId, (p) => ({ ...p, sections: p.sections.map((s) => (s.id === sectionId ? { ...s, heading: heading.trim() || s.heading, updatedAt: now() } : s)) }));
+}
+
+export function removeProjectSection(projectId: string, sectionId: string): void {
+  patchProject(projectId, (p) => ({ ...p, sections: p.sections.filter((s) => s.id !== sectionId).map((s, i) => ({ ...s, order: i })) }));
+}
+
+/**
+ * Replace a section's paragraphs with a fresh draft, pushing the prior version
+ * into append-only history. Never discards earlier text.
+ */
+export function setSectionDraft(
+  projectId: string,
+  sectionId: string,
+  paragraphs: DraftParagraph[],
+  source: "ai" | "mock" | "human",
+  fingerprint?: DraftSection["fingerprint"],
+  note?: string,
+): void {
+  patchProject(
+    projectId,
+    (p) => ({
+      ...p,
+      sections: p.sections.map((s) => {
+        if (s.id !== sectionId) return s;
+        const versions = s.paragraphs.length
+          ? [...s.versions, { at: s.updatedAt, paragraphs: s.paragraphs, source: (s.source === "empty" ? "human" : s.source) as "human" | "ai" | "mock", note }]
+          : s.versions;
+        return { ...s, paragraphs, versions, source, updatedAt: now(), fingerprint: fingerprint ?? s.fingerprint };
+      }),
+    }),
+    { note: `Drafted “${state.knowledgeProjects.find((x) => x.id === projectId)?.sections.find((s) => s.id === sectionId)?.heading ?? "section"}”`, source },
+  );
+}
+
+/** Edit one paragraph's text/citations (a human edit — versioned on next draft). */
+export function editSectionParagraph(projectId: string, sectionId: string, paragraphId: string, fields: Partial<Pick<DraftParagraph, "text" | "citations">>): void {
+  patchProject(projectId, (p) => ({
+    ...p,
+    sections: p.sections.map((s) =>
+      s.id === sectionId
+        ? { ...s, paragraphs: s.paragraphs.map((pg) => (pg.id === paragraphId ? { ...pg, ...fields } : pg)), source: "human", updatedAt: now() }
+        : s,
+    ),
+  }));
+}
+
+/** Remove an (e.g. unsupported) paragraph. */
+export function removeSectionParagraph(projectId: string, sectionId: string, paragraphId: string): void {
+  patchProject(projectId, (p) => ({
+    ...p,
+    sections: p.sections.map((s) => (s.id === sectionId ? { ...s, paragraphs: s.paragraphs.filter((pg) => pg.id !== paragraphId), updatedAt: now() } : s)),
+  }));
+}
+
+/** Record a fresh evidence fingerprint for the whole project. */
+export function markProjectReviewed(projectId: string): void {
+  const p = state.knowledgeProjects.find((x) => x.id === projectId);
+  if (!p) return;
+  patchProject(projectId, (pp) => ({ ...pp, fingerprint: makeFingerprint(state, projectDeps(pp)) }));
+}
+
+export function knowledgeProjectById(s: StoreState, projectId: string): KnowledgeProject | undefined {
+  return s.knowledgeProjects.find((p) => p.id === projectId);
 }

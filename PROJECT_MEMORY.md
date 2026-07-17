@@ -24,6 +24,48 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-17
+- **LIFEOS-019 — Knowledge synthesis & authoring engine: implemented.** The
+  synthesis layer — the user turns everything they have learned into a book/
+  essay/lecture/course/paper/blog/guide/philosophy. **Not** a chatbot, **not**
+  autonomous writing: evidence-first, human-directed, deterministic-first; the
+  system assembles evidence, proposes outlines, and drafts ONE section at a time
+  on request, never writing the whole work on its own and never inventing a
+  citation. New `KnowledgeProject` record: title/description/purpose/audience,
+  `kind`, status, an `assembly` (chosen evidence ids across ALL nine record
+  types — references, never copies), generated `outlineOptions` + chosen
+  outline, `sections` (each `DraftSection` with `DraftParagraph[]` carrying
+  paragraph-level citations, append-only `versions`, fingerprint), append-only
+  project `history`, freshness fingerprint. Assembly (`lib/authoring/assembly.ts`):
+  deterministic provenance-bearing packet whose ids ARE real record ids.
+  Outlines (`lib/authoring/outline.ts`): per-kind deterministic templates seeded
+  with the project's own concepts/threads + one AI candidate (`outline_generate`);
+  human chooses. Section drafting (`lib/authoring/draft.ts`+`schema.ts`): one
+  `section_draft` AI call → cited paragraphs; uncited marked UNSUPPORTED
+  (surfaced + removable); 8 transforms (rewrite/expand/compress/clarify +
+  academic/popular/technical/conversational) re-draft a single section, pushing
+  the prior into append-only version history. Citations (`citations.ts`):
+  resolve ids→labels, unsupported detection, coverage. Cross-references
+  (`crossref.ts`, Phase 7): deterministic related-concepts/missing-evidence/
+  contradictions/older-drafts/relevant-decisions/formation-insights/duplicate-
+  paragraphs — NEVER auto-inserted. Export (`lib/authoring/export/`, Phase 9):
+  deterministic, DEPENDENCY-FREE Markdown/HTML/DOCX(store-only zip + OOXML via a
+  pure-TS CRC32 zip writer)/PDF(minimal Helvetica writer w/ wrapping+pagination);
+  all render one `ExportDoc`, citations preserved as [n] + numbered references.
+  Freshness: `projectDeps` over every assembled record. Single AI route
+  preserved (`outline_generate` + `section_draft` added). Persistence: array +
+  adapters + additive migration `0014_authoring_engine.sql` (own-rows RLS,
+  rerunnable; 0001–0013 untouched). New `/author` + `/author/[id]`; components
+  AuthoringSection (draft/transform/citations/crossref/history), ExportBar; Nav
+  "Author"; entry point from Threads ("Write from this thread"). Verified:
+  **23/23 authoring checks** (incl. export byte verification — valid DOCX zip
+  unzips to 4 OOXML parts; PDF has startxref/Pages/Helvetica) + all prior suites
+  (21/21 world, 26/26 formation, 34/34 decision, 19/19 semantic, review, threads,
+  inquiry, compare, retrieval, reason, qa3, pdf, long-source), zero runtime
+  errors; `lint`/`build` green. Supabase `knowledge_projects` sync/RLS/
+  cross-device is code-complete but credential-pending. Still one AI route; no
+  agents, autonomous writing, chatbot, notifications, or auto Constitution
+  changes.
+- Date: 2026-07-17
 - **LIFEOS-018 — Worldview & concept graph: implemented.** The conceptual
   backbone of LifeOS — a model of the user's evolving understanding of reality.
   **Not** a graph visualization, **not** embeddings, **not** agents:
@@ -1384,3 +1426,33 @@ scope or order.
   credential-pending. README unchanged. No agents, graph visualization,
   embeddings, notifications, auto Constitution changes, or new AI routes beyond
   `/api/ai`.
+- 2026-07-17 — Implemented **LIFEOS-019 knowledge authoring** (base: merged
+  LIFEOS-018 on `main`; branch restarted from `origin/main`). New:
+  `lib/authoring/{assembly,outline,draft,schema,citations,crossref}.ts`
+  (deterministic evidence assembly; per-kind outline candidates + AI candidate;
+  section drafting with paragraph-level citation validation; unsupported
+  detection + coverage; deterministic cross-reference engine), `lib/authoring/
+  export/{model,markdown,html,zip,docx,pdf,index}.ts` (dependency-free exporters
+  — a pure-TS CRC32 store-only zip powering a minimal OOXML .docx, and a minimal
+  Helvetica PDF writer with wrapping+pagination; all render one ExportDoc so
+  citations are preserved identically), `lib/mockAuthoring.ts`,
+  `components/{AuthoringSection,ExportBar}.tsx`, `app/author/page.tsx` +
+  `app/author/[id]/page.tsx`, `supabase/migrations/0014_authoring_engine.sql`.
+  Extended `types/mvp.ts` (`KnowledgeProject`, `DraftSection`, `DraftParagraph`,
+  `SectionVersion`, `OutlineOption`, `ProjectAssembly`, `ProjectEvidence`,
+  `CrossRef` + enums, `StoreState.knowledgeProjects`), `app/api/ai/route.ts`
+  (`outline_generate` + `section_draft`), `lib/aiClient.ts`
+  (`generateOutlines`/`draftSection`), `lib/freshness/fingerprint.ts`
+  (`projectDeps`), `lib/mvpStore.ts` (knowledgeProjects + create/assemble/
+  outline-choose/section-draft(history-preserving)/transform/paragraph-edit/
+  export actions), `lib/persistence.ts`, `lib/adapters/{localAdapter,
+  supabaseAdapter}.ts` (load/save/delete + row mappers). Entry point:
+  `app/threads/[id]/page.tsx` ("Write from this thread"); `components/Nav.tsx`
+  ("Author"). Verified 23/23 authoring (incl. export byte verification: DOCX is
+  a valid zip unzipping to 4 OOXML parts, PDF has startxref/Pages/Helvetica) +
+  all prior suites (world 21, formation 26, decision 34, semantic 19, review,
+  threads, inquiry, compare, retrieval, reason, qa3, pdf, long-source), zero
+  runtime errors; `lint`=0, `build`=0. Supabase `knowledge_projects`
+  persistence is code-complete but credential-pending. README unchanged. No
+  agents, autonomous writing, chatbot, notifications, auto Constitution changes,
+  or new AI routes beyond `/api/ai`.

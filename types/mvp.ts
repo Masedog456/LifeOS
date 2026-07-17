@@ -1459,6 +1459,156 @@ export interface WorldTimelineItem {
   href?: string;
 }
 
+// ---------- Knowledge synthesis & authoring (LIFEOS-019) ----------
+
+/** The form of work being authored. Shapes outline templates and tone defaults. */
+export type ProjectKind =
+  | "book"
+  | "essay"
+  | "lecture"
+  | "course"
+  | "research_paper"
+  | "blog_series"
+  | "guide"
+  | "philosophy";
+
+export type ProjectStatus = "planning" | "outlining" | "drafting" | "revising" | "complete" | "archived";
+
+/** Which record kinds a citation can point at (evidence ids ARE real record ids). */
+export type CitationKind =
+  | "source"
+  | "belief"
+  | "concept"
+  | "thread"
+  | "reasoning"
+  | "decision"
+  | "formation"
+  | "principle"
+  | "framework";
+
+/** The user's chosen evidence for a project — everything keeps provenance (Phase 3). */
+export interface ProjectAssembly {
+  sourceIds: string[];
+  beliefIds: string[];
+  conceptIds: string[];
+  threadIds: string[];
+  reasoningIds: string[];
+  frameworkIds: string[];
+  principleIds: string[];
+  formationIds: string[];
+  decisionIds: string[];
+}
+
+/** One resolved evidence item in the assembled packet (id = real record id). */
+export interface ProjectEvidence {
+  id: string;
+  kind: CitationKind;
+  label: string;
+  text: string;
+}
+
+/** Tone/length transforms a section draft supports (Phase 5). */
+export type DraftTransform =
+  | "rewrite"
+  | "expand"
+  | "compress"
+  | "clarify"
+  | "academic"
+  | "popular"
+  | "technical"
+  | "conversational";
+
+/** One paragraph. Every factual paragraph must cite evidence ids (Phase 6). */
+export interface DraftParagraph {
+  id: string;
+  text: string;
+  /** Evidence record ids grounding this paragraph. Empty ⇒ unsupported. */
+  citations: string[];
+}
+
+/** One append-only prior state of a section (Phase 8). Never overwritten. */
+export interface SectionVersion {
+  at: ISO;
+  paragraphs: DraftParagraph[];
+  /** Who produced this version. */
+  source: "human" | "ai" | "mock";
+  note?: string;
+}
+
+/** A drafted section of the work. */
+export interface DraftSection {
+  id: string;
+  heading: string;
+  /** What this section is meant to do (from the outline). */
+  purpose?: string;
+  order: number;
+  paragraphs: DraftParagraph[];
+  /** Append-only version history. */
+  versions: SectionVersion[];
+  source: "human" | "ai" | "mock" | "empty";
+  updatedAt: ISO;
+  fingerprint?: SavedFingerprint;
+}
+
+/** One candidate outline (Phase 4). Several are generated; the human chooses one. */
+export interface OutlineOption {
+  id: string;
+  kind: ProjectKind;
+  title: string;
+  rationale: string;
+  sections: { heading: string; purpose: string }[];
+  source: "deterministic" | "ai" | "mock";
+}
+
+/** A deterministic cross-reference suggestion while writing (Phase 7). Never auto-inserted. */
+export type CrossRefKind =
+  | "related_concept"
+  | "missing_evidence"
+  | "contradiction"
+  | "older_draft"
+  | "relevant_decision"
+  | "formation_insight"
+  | "duplicate_paragraph";
+
+export interface CrossRef {
+  id: string;
+  kind: CrossRefKind;
+  title: string;
+  detail: string;
+  /** Records/sections involved. */
+  refs: string[];
+  href?: string;
+}
+
+/**
+ * A synthesis/authoring project — the user creates a book/essay/lecture/etc.
+ * from everything they have learned. Evidence-first and human-directed: the
+ * system assembles evidence, proposes outlines, and drafts one section at a
+ * time on request; it never writes autonomously and never invents citations.
+ */
+export interface KnowledgeProject {
+  id: string;
+  title: string;
+  description: string;
+  purpose: string;
+  audience: string;
+  kind: ProjectKind;
+  status: ProjectStatus;
+  assembly: ProjectAssembly;
+  /** Generated candidates (Phase 4). */
+  outlineOptions: OutlineOption[];
+  /** The chosen outline id, if one was selected. */
+  chosenOutlineId?: string;
+  sections: DraftSection[];
+  /** Append-only project-level change log. */
+  history: { at: ISO; note: string; source: "human" | "ai" | "mock" }[];
+  fingerprint?: SavedFingerprint;
+  aiModel: string;
+  source: "ai" | "mock";
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -1479,4 +1629,5 @@ export interface StoreState {
   conceptRelationships: ConceptRelationship[];
   principles: Principle[];
   frameworks: Framework[];
+  knowledgeProjects: KnowledgeProject[];
 }

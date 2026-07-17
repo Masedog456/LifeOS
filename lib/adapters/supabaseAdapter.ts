@@ -24,6 +24,7 @@ import type {
   FormationSession,
   Framework,
   Inquiry,
+  KnowledgeProject,
   Principle,
   Megathread,
   PracticeCandidate,
@@ -58,7 +59,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks, knowledgeProjects] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -82,6 +83,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("concept_relationships").select("*").order("created_at", { ascending: false }),
         this.client.from("principles").select("*").order("created_at", { ascending: false }),
         this.client.from("frameworks").select("*").order("created_at", { ascending: false }),
+        this.client.from("knowledge_projects").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -106,7 +108,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       concepts.error ||
       conceptRelationships.error ||
       principles.error ||
-      frameworks.error;
+      frameworks.error ||
+      knowledgeProjects.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -142,6 +145,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       conceptRelationships: (conceptRelationships.data ?? []).map(rowToRelationship),
       principles: (principles.data ?? []).map(rowToPrinciple),
       frameworks: (frameworks.data ?? []).map(rowToFramework),
+      knowledgeProjects: (knowledgeProjects.data ?? []).map(rowToProject),
     };
   }
 
@@ -220,6 +224,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (state.frameworks.length) {
       await this.throwing(this.client.from("frameworks").upsert(state.frameworks.map(frameworkToRow)));
     }
+    if (state.knowledgeProjects.length) {
+      await this.throwing(this.client.from("knowledge_projects").upsert(state.knowledgeProjects.map(projectToRow)));
+    }
     this.lastState = "synced";
     this.lastError = undefined;
   }
@@ -282,6 +289,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("knowledge_projects").delete().eq("user_id", uid));
     await this.throwing(this.client.from("concept_relationships").delete().eq("user_id", uid));
     await this.throwing(this.client.from("frameworks").delete().eq("user_id", uid));
     await this.throwing(this.client.from("principles").delete().eq("user_id", uid));
@@ -1048,6 +1056,49 @@ function rowToFramework(r: any): Framework {
     status: (r.status ?? "active") as Framework["status"],
     history: (r.history ?? []) as Framework["history"],
     source: (r.source ?? "user") as Framework["source"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function projectToRow(p: KnowledgeProject) {
+  return {
+    id: p.id,
+    title: p.title,
+    description: p.description,
+    purpose: p.purpose,
+    audience: p.audience,
+    kind: p.kind,
+    status: p.status,
+    assembly: p.assembly,
+    outline_options: p.outlineOptions,
+    chosen_outline_id: p.chosenOutlineId ?? null,
+    sections: p.sections,
+    history: p.history,
+    fingerprint: p.fingerprint ?? null,
+    ai_model: p.aiModel,
+    source: p.source,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+  };
+}
+function rowToProject(r: any): KnowledgeProject {
+  return {
+    id: r.id,
+    title: r.title ?? "",
+    description: r.description ?? "",
+    purpose: r.purpose ?? "",
+    audience: r.audience ?? "",
+    kind: (r.kind ?? "essay") as KnowledgeProject["kind"],
+    status: (r.status ?? "planning") as KnowledgeProject["status"],
+    assembly: (r.assembly ?? {}) as KnowledgeProject["assembly"],
+    outlineOptions: (r.outline_options ?? []) as KnowledgeProject["outlineOptions"],
+    chosenOutlineId: r.chosen_outline_id ?? undefined,
+    sections: (r.sections ?? []) as KnowledgeProject["sections"],
+    history: (r.history ?? []) as KnowledgeProject["history"],
+    fingerprint: (r.fingerprint ?? undefined) as KnowledgeProject["fingerprint"],
+    aiModel: r.ai_model ?? "mock",
+    source: (r.source ?? "mock") as KnowledgeProject["source"],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

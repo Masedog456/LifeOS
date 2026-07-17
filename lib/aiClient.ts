@@ -23,7 +23,8 @@ import { mockReasoning } from "@/lib/mockReasoning";
 import { mockDecision, type MockDecisionContext } from "@/lib/mockDecision";
 import { mockFormationSynthesis, type MockFormationContext } from "@/lib/mockFormationSession";
 import { mockWorld } from "@/lib/mockWorld";
-import type { EvidenceItem } from "@/types/mvp";
+import { mockOutlines, mockSectionDraft } from "@/lib/mockAuthoring";
+import type { DraftTransform, EvidenceItem, ProjectEvidence } from "@/types/mvp";
 
 export type AiSource = "ai" | "mock";
 export type { ChunkMap } from "@/lib/mockAI";
@@ -248,5 +249,30 @@ export function proposeWorldModel(args: { evidence: EvidenceItem[] }) {
   return call<unknown>(
     { task: "concept_extract", evidence: toWire(args.evidence) },
     () => mockWorld({ evidence: args.evidence }),
+  );
+}
+
+// ---------- Knowledge synthesis & authoring (LIFEOS-019) ----------
+
+/** Project evidence → the route's evidence wire shape (id/group/kind/text). */
+function projectToWire(evidence: ProjectEvidence[]) {
+  return evidence.map((e) => ({ id: e.id, group: e.kind, kind: e.kind, text: e.text }));
+}
+
+/** Generate candidate outlines. RAW object (validated by caller). */
+export function generateOutlines(args: { evidence: ProjectEvidence[]; kind: string; title: string; purpose: string; audience: string }) {
+  const context = { kind: args.kind, title: args.title, purpose: args.purpose, audience: args.audience };
+  return call<unknown>(
+    { task: "outline_generate", evidence: projectToWire(args.evidence), draft: JSON.stringify(context) },
+    () => mockOutlines({ evidence: projectToWire(args.evidence), context }),
+  );
+}
+
+/** Draft one section (optionally with a transform). RAW object (validated by caller). */
+export function draftSection(args: { evidence: ProjectEvidence[]; heading: string; purpose: string; transform?: DraftTransform; existing?: string }) {
+  const context = { heading: args.heading, purpose: args.purpose, transform: args.transform, existing: args.existing };
+  return call<unknown>(
+    { task: "section_draft", evidence: projectToWire(args.evidence), draft: JSON.stringify(context) },
+    () => mockSectionDraft({ evidence: projectToWire(args.evidence), context: { heading: args.heading, purpose: args.purpose, transform: args.transform } }),
   );
 }
