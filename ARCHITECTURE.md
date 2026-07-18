@@ -766,6 +766,70 @@ research, world model, knowledge graph, authoring, decision intelligence).
   / turns / outcomes / history / fingerprint). No table/row/RLS/migration
   0001–0016 is modified.
 
+## Dialectical synthesis & tension resolution (LIFEOS-023 — implemented)
+
+Turns a dialogue into genuine dialectical *reasoning*: the engine surfaces
+tensions between the user's beliefs, assumptions, evidence and perspectives, then
+helps build increasingly coherent syntheses. The goal is **not** debate,
+persuasion, or winning — it is the progressive refinement of understanding, and
+uncertainty is preserved wherever justified. Deterministic-first, evidence-first,
+human-directed, and **AI-FREE** (adds no `/api/ai` task). REUSES the LIFEOS-021
+knowledge graph and the LIFEOS-022 dialogue context.
+
+- **Records** (`Tension`, `Synthesis`). A `Tension` explicitly represents a
+  thesis and antithesis, the records each rests on, evidence links, four-axis
+  confidence, unresolved questions, a `kind` (conflicting_beliefs /
+  incompatible_assumptions / unresolved_paradox / competing_values /
+  empirical_disagreement / logical_inconsistency / definition_mismatch), a status
+  lifecycle, and a stable `signature` so re-detection never duplicates it. A
+  `Synthesis` integrates one or more tensions and records preserved insights,
+  discarded assumptions, common ground, remaining uncertainty, four-axis
+  confidence, append-only revisions, and provenance outcomes.
+- **Tension detection** (`lib/dialectic/tensions.ts`, `detectTensions`).
+  Deterministic and EXPLICIT-signal only: graph `contradicts` edges between
+  in-context beliefs, a concept's declared `opposingConcepts`, ≥2 competing
+  framework/principle perspectives, research hypotheses that cite evidence both
+  for and against, and challenge/counterargument turns left unanswered in the
+  transcript. Nothing is inferred by language modelling; nothing is auto-resolved.
+- **Synthesis generation** (`lib/dialectic/synthesis.ts`, `generateSyntheses`).
+  Deterministic scaffolds — a higher-order **integration** (each side captures a
+  real part; the mutual-exclusivity assumption is discarded), a **scoped**
+  resolution (each side holds under stated conditions), and always a **deferral**
+  that preserves the tension when integration is not yet justified. A synthesis
+  is never a mere compromise, and the user authors/edits/accepts/rejects — the
+  engine decides nothing.
+- **Separated confidence** (`lib/dialectic/confidence.ts`). Factual / logical /
+  evidential / experiential are tracked as four independent axes and NEVER
+  collapsed into a single score; `unknown` is a first-class value, and the engine
+  defaults to the conservative reading (evidential strength is the *weaker*-
+  supported side, not the average). This is the primary guard against false
+  certainty.
+- **Conversation memory** (`lib/dialectic/memory.ts`, `buildDialecticMemory`).
+  Derived, read-only: previous (accepted) syntheses, abandoned (rejected/
+  superseded) syntheses, unresolved tensions, and recurring conflicts (records
+  that participate in more than one tension). Built fresh each render.
+- **Knowledge integration** (`lib/mvpStore.ts`). A synthesis can become a
+  Belief/Constitution proposal (→ Inbox), a Concept or Principle (World Model), or
+  a Research project — each REUSES the existing creators (`sendToInbox` /
+  `createConcept` / `createPrinciple` / `createResearchProject`) and is recorded
+  as provenance on the synthesis. Nothing mutates a belief, concept, research
+  project, or dialogue automatically; every integration is an explicit user act.
+  (Reasoning-record integration is deferred because reasonings require the AI
+  route — see the sprint's future-work note.)
+- **UI — Dialectical Workspace.** A "Dialectic" tab on `/dialogue/[id]`
+  (`components/DialecticWorkspace.tsx` + `TensionCard` / `SynthesisPanel` /
+  `ConfidenceMeter`) where the user inspects tensions, compares the two poles
+  with their evidence, reads the deterministic why-flagged rationale, sees the
+  four confidence axes, accepts/rejects/revises syntheses, writes their own, and
+  continues the dialogue from any synthesis. Every intermediate reasoning
+  structure is inspectable — nothing is hidden.
+- **Freshness + persistence.** `tensionDeps` / `synthesisDeps` feed the shared
+  freshness fingerprint. `tensions` + `syntheses` arrays persist through both
+  adapters (dirty-gated). Migration `0018_dialectical_synthesis.sql` adds
+  own-rows-RLS `tensions` and `syntheses` tables (jsonb bodies, four-axis
+  confidence, indexes); additive and idempotent. No table/row/RLS/migration
+  0001–0017 is modified.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on

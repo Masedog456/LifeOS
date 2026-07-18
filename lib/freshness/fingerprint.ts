@@ -187,6 +187,14 @@ export function dialogueDeps(d: import("@/types/mvp").DialogueSession): string[]
     ...d.turns.flatMap((t) => t.citations),
   ];
 }
+/** Tension deps: the records each side rests on + its evidence links. */
+export function tensionDeps(t: import("@/types/mvp").Tension): string[] {
+  return [...t.thesisRefs, ...t.antithesisRefs, ...t.evidence.map((e) => e.refId)];
+}
+/** Synthesis deps: its evidence links + the tensions it integrates. */
+export function synthesisDeps(s: import("@/types/mvp").Synthesis): string[] {
+  return [...s.evidenceLinks.map((e) => e.refId), ...s.tensionIds];
+}
 
 const KIND_NOUN: Record<string, [string, string]> = {
   belief: ["belief was revised", "beliefs were revised"],

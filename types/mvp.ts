@@ -1871,6 +1871,128 @@ export interface DialogueSession {
   updatedAt: ISO;
 }
 
+// ---------- Dialectical synthesis & tension resolution (LIFEOS-023) ----------
+
+/**
+ * Confidence is tracked along FOUR independent axes and never collapsed into a
+ * single score — false certainty most often comes from averaging away a weak
+ * dimension. `unknown` is a first-class value: it is honest to say we don't know.
+ */
+export type ConfidenceLevel = "unknown" | "low" | "moderate" | "high";
+
+export interface DialecticConfidence {
+  /** How well-established the underlying facts are. */
+  factual: ConfidenceLevel;
+  /** Soundness / validity of the reasoning connecting the claims. */
+  logical: ConfidenceLevel;
+  /** Strength and independence of the cited evidence. */
+  evidential: ConfidenceLevel;
+  /** Support from the user's own lived / first-person experience. */
+  experiential: ConfidenceLevel;
+}
+
+/** The kinds of tension the dialectical engine can represent (detected or user-authored). */
+export type DialecticTensionKind =
+  | "conflicting_beliefs"
+  | "incompatible_assumptions"
+  | "unresolved_paradox"
+  | "competing_values"
+  | "empirical_disagreement"
+  | "logical_inconsistency"
+  | "definition_mismatch";
+
+/** How a tension or synthesis came to exist. */
+export type DialecticOrigin = "detected" | "user";
+
+/** A record cited in a tension or synthesis, with the role it plays. Never a copy. */
+export interface DialecticEvidenceLink {
+  id: string;
+  /** The record id (belief / source / concept / reasoning / …). */
+  refId: string;
+  label: string;
+  stance: "supports_thesis" | "supports_antithesis" | "qualifies" | "context";
+  note?: string;
+}
+
+export type TensionStatus =
+  | "open"
+  | "under_synthesis"
+  | "resolved"
+  | "dissolved"
+  | "accepted_as_paradox";
+
+/**
+ * An explicitly represented tension between two positions grounded in the user's
+ * own records. A tension is never "won" — it is understood, and possibly
+ * integrated. Detection is deterministic (explicit graph/record signals only);
+ * nothing is inferred silently and nothing is auto-resolved.
+ */
+export interface Tension {
+  id: string;
+  dialogueId: string;
+  kind: DialecticTensionKind;
+  title: string;
+  thesis: string;
+  antithesis: string;
+  /** Records the thesis rests on (beliefs / perspectives / turns / sources). */
+  thesisRefs: string[];
+  /** Records the antithesis rests on. */
+  antithesisRefs: string[];
+  evidence: DialecticEvidenceLink[];
+  confidence: DialecticConfidence;
+  unresolvedQuestions: string[];
+  status: TensionStatus;
+  origin: DialecticOrigin;
+  /** Deterministic rationale for why the engine flagged this (inspectable). */
+  detail?: string;
+  /** Stable signature (kind + sorted member ids) — used to dedupe re-detection. */
+  signature: string;
+  history: { at: ISO; note: string }[];
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
+/** One point in a synthesis's wording/confidence history (append-only). */
+export interface SynthesisRevision {
+  at: ISO;
+  statement: string;
+  note?: string;
+  confidence: DialecticConfidence;
+}
+
+export type SynthesisStatus = "candidate" | "accepted" | "rejected" | "superseded";
+
+/**
+ * A synthesis is a higher-order integration of a tension (or several) — NOT a
+ * compromise and NOT a winner. It preserves the strongest insight from each
+ * side, names the assumptions it discards, exposes hidden common ground, and
+ * states what remains uncertain. Candidates are generated deterministically as
+ * scaffolds; the user authors, edits, accepts, or rejects. Integrating a
+ * synthesis into beliefs / world model / research is always an explicit action.
+ */
+export interface Synthesis {
+  id: string;
+  dialogueId: string;
+  /** One or more tensions this integrates (higher-order syntheses span several). */
+  tensionIds: string[];
+  statement: string;
+  preservedInsights: string[];
+  discardedAssumptions: string[];
+  commonGround: string[];
+  remainingUncertainty: string[];
+  confidence: DialecticConfidence;
+  evidenceLinks: DialecticEvidenceLink[];
+  status: SynthesisStatus;
+  origin: "generated" | "user";
+  /** The synthesis this one supersedes (revision lineage across syntheses). */
+  supersedesId?: string;
+  revisions: SynthesisRevision[];
+  /** Records this synthesis was integrated into (provenance) — never auto-mutated. */
+  outcomes: { at: ISO; kind: string; recordId: string; label: string }[];
+  createdAt: ISO;
+  updatedAt: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -1894,4 +2016,6 @@ export interface StoreState {
   knowledgeProjects: KnowledgeProject[];
   researchProjects: ResearchProject[];
   dialogueSessions: DialogueSession[];
+  tensions: Tension[];
+  syntheses: Synthesis[];
 }
