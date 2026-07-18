@@ -2817,3 +2817,26 @@ export function reopenRecommendation(recId: string): void {
 export function recommendationById(s: StoreState, recId: string): Recommendation | undefined {
   return s.recommendations.find((r) => r.id === recId);
 }
+
+// ---------- Generation 1 hardening (LIFEOS-025) ----------
+
+/**
+ * The ONLY integrity repair offered (safe + effectively reversible): remove
+ * recommendations whose affected records no longer exist. Recommendations are
+ * DERIVED opportunities — re-running the orchestrator scan recreates any whose
+ * signal still exists. User knowledge is never touched. Returns removed count.
+ */
+export function repairStaleRecommendations(): number {
+  const known = new Set<string>();
+  const add = (arr: { id: string }[]) => { for (const r of arr) known.add(r.id); };
+  add(state.captures); add(state.proposals); add(state.beliefs); add(state.sources);
+  add(state.comparisons); add(state.inquiries); add(state.megathreads); add(state.reflections);
+  add(state.practices); add(state.reviews); add(state.reasonings); add(state.decisions);
+  add(state.formationSessions); add(state.concepts); add(state.conceptRelationships);
+  add(state.principles); add(state.frameworks); add(state.knowledgeProjects);
+  add(state.researchProjects); add(state.dialogueSessions); add(state.tensions); add(state.syntheses);
+  const keep = state.recommendations.filter((r) => !r.affected.some((a) => a.id && !known.has(a.id)));
+  const removed = state.recommendations.length - keep.length;
+  if (removed > 0) setState({ ...state, recommendations: keep });
+  return removed;
+}

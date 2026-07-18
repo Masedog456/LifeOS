@@ -183,7 +183,15 @@
     rows, other tables, or their RLS. The orchestrator adds no AI route — every
     scanner is deterministic — and never mutates knowledge; recommendations are
     opportunities the user accepts, dismisses, snoozes, or completes.
-20. **Project Settings → API**: copy the **Project URL** and the **anon
+20. Then run `supabase/migrations/0020_generation_one_hardening.sql`
+    (LIFEOS-025 — adds the `user_prefs` key/value table: per-user preferences,
+    currently onboarding state, so the first-run tour follows the user across
+    devices. Own-rows RLS with full CRUD; `(user_id, key)` primary key +
+    `updated_at` index). Additive and rerunnable; it does not touch migrations
+    0001–0019, existing rows, other tables, or their RLS. System-health
+    reporting, sync diagnostics, and integrity findings are deliberately
+    DERIVED at view time — no tables are added for them.
+21. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -498,6 +506,31 @@ changes runtime behavior.
       applies cleanly and is idempotent on a Postgres 16 schema built from
       0001–0018; Supabase `recommendations` persistence is code-complete and
       credential-pending like all remote sync.
+- [x] **Generation 1 hardening (LIFEOS-025):** the four-step onboarding runs
+      end-to-end (real first capture in the user's own words, live proposal
+      count, finish lands on the LifeOS Inbox), persists per user, and is
+      restartable; **Daily Home** (`/today`) projects pending proposals, recent
+      captures, open work, and recently-completed items while creating ZERO
+      records (verified by count); the grouped Primary nav has an accessible
+      name, no duplicate destinations, keyboard-reachable links, and the brand
+      mark returns to Daily Home; **System Health** (`/health`) reports real
+      persistence connectivity, schema/migration compatibility, hydration,
+      scan/graph status, per-domain counts, and all 10 integrity checks with
+      remediation text and NO secrets; a seeded stale recommendation is
+      detected and the safe repair removes only that derived record;
+      **persistence hardening** verified live: an unparseable local blob is
+      PRESERVED under `lifeos.mvp.v1.corrupt` (byte-identical) and surfaced on
+      /health instead of being silently overwritten; the indicator shows real
+      local-only state; all 12 primary modules render meaningful empty states
+      with no raw exceptions; Daily Home and the LifeOS Inbox fit a 390px
+      mobile viewport with no horizontal scroll. (41/41 gen1 checks.)
+      **Non-breaking: ALL prior suites re-run green** — orchestration 22,
+      synthesis 22, dialogue 19, research 21, authoring 23, world 21, formation
+      26, decision, semantic, review, threads, inquiry, compare, retrieval,
+      reason, qa3, pdf, long-source, graph 15, auth, sync. Migration
+      `0020_generation_one_hardening.sql` applies cleanly and is idempotent on
+      a Postgres 16 schema built from 0001–0019; `user_prefs` mirroring is
+      code-complete and credential-pending like all remote sync.
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
