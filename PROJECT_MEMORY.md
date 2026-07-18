@@ -1867,3 +1867,14 @@ scope or order.
   0001–0019; mobile viewports clean at 390px; `lint`=0, `build`=0. README
   unchanged. No agents, no new AI routes, no speculative ontology, no
   auto-mutation — Daily Home and System Health are projections/observations.
+- 2026-07-18 — **Generation 1 RC validation plan** (post-LIFEOS-025 merge; no
+  feature, no migration, no architecture change). Verified the FULL migration
+  chain 0001→0020 applies in order on a fresh Postgres 16 with zero errors
+  (0010/pgvector runs on Supabase where the extension exists), yields 29
+  tables with RLS enabled on all 29, and the whole chain re-runs idempotently.
+  New: `RELEASE_VALIDATION.md` (production schema verification SQL,
+  credentialed Supabase acceptance checklist, two-user RLS test plan,
+  seven-day /today-centered dogfooding plan, v1.0.0-rc1 + v1.0.0 release
+  criteria, rollback procedure) and `.github/ISSUE_TEMPLATE/finding.yml`
+  (severity / data-loss risk / module / repro / expected / actual / evidence).
+  README links the new doc. No app code touched.
