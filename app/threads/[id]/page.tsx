@@ -113,6 +113,12 @@ export default function ThreadDetailPage() {
             Model as a concept →
           </Link>
           <Link
+            href={`/dialogue?thread=${thread.id}&topic=${encodeURIComponent(thread.title)}`}
+            className="text-sm text-zinc-500 underline-offset-4 hover:underline"
+          >
+            Investigate in dialogue →
+          </Link>
+          <Link
             href={`/author?thread=${thread.id}&title=${encodeURIComponent(thread.title)}`}
             className="text-sm text-zinc-500 underline-offset-4 hover:underline"
           >

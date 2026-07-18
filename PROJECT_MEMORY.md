@@ -24,6 +24,50 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-17
+- **LIFEOS-022 — Socratic Dialogue & Dialectical Engine: implemented.** A
+  structured environment to *investigate* an idea through disciplined dialogue —
+  **not** a chatbot, **not** roleplay, **not** autonomous reasoning. Evidence-
+  first, deterministic-first, human-directed, and AI-FREE (adds no `/api/ai`
+  task — the Socratic engine is deterministic, matching "not a chatbot"). Built
+  largely by REUSING earlier subsystems. New `DialogueSession` record (id/title/
+  topic/purpose/status open→active→paused→concluded→archived/participants/
+  seedRefs/turns/outcomes/append-only history/freshness fingerprint). Dialogue
+  turns (`DialogueTurn`) are typed (question/response/challenge/clarification/
+  counterargument/evidence/reflection/summary), authored (you/socratic/
+  perspective), each carrying its own citations + flags (insight/new_question/
+  dead_end) — provenance on every turn. **Socratic engine**
+  (`lib/dialogue/socratic.ts`, `generateInquiries`): deterministic, always emits
+  the six classic moves ("What do you mean by…?", "What evidence supports this?",
+  "Could the opposite be true?", "What assumptions are hidden?", "What follows if
+  this is true?", "What would falsify this?"), plus per-framework/principle
+  perspective a "How would [X] respond?" line and graph-grounded lines for
+  contradicting beliefs / related research / decision history / related concepts
+  — never chooses automatically, always offers multiple lines of inquiry.
+  **Perspective engine**: viewpoints (Current/Past Constitution, Frameworks,
+  Principles, Beliefs, Research projects, Authors) each cite the record they are
+  sourced from — nothing invented. **Graph integration**
+  (`lib/dialogue/context.ts`, `buildDialogueContext`): REUSES `lib/graph`
+  (`buildGraph`/`relationshipsOf`) to surface related concepts / supporting +
+  contradicting beliefs / related research / authoring / decision + formation
+  history — never inferred silently. **Outcomes**: dialogue → Research /
+  Knowledge / Decision / Concept / Principle / Framework, or Belief/Constitution
+  proposal → Inbox — every outcome REUSES the existing creators
+  (`createResearchProject`/`createKnowledgeProject`/`createDecision`/
+  `createConcept`/`createPrinciple`/`createFramework`/`sendToInbox`), recorded as
+  provenance on the dialogue; nothing is automatic and proposals never auto-add.
+  **Timeline** (`lib/dialogue/timeline.ts`): derived read-only from session +
+  turns (insights/new questions/dead ends) + outcomes, append-only. Freshness:
+  `dialogueDeps`. Persistence: `dialogueSessions` array + local/Supabase adapters
+  + additive migration `0017_dialogue_engine.sql` (own-rows RLS, jsonb columns,
+  0001–0016 untouched). UI: `/dialogue` (list + create, seedable from
+  constitution/threads/research/concepts) and `/dialogue/[id]` (tabbed Dialogue/
+  Perspectives/Graph/Outcomes/Timeline). Nav + entry points from Constitution
+  ("Question in dialogue →") and Threads ("Investigate in dialogue →"). Verified:
+  **19/19 dialogue checks** + **ALL prior suites re-run green** (research 21,
+  authoring 23, world 21, formation 26, decision, semantic, review, threads,
+  inquiry, compare, retrieval, reason, qa3, pdf, long-source, graph 15), zero
+  runtime errors; `lint`/`build` green. Still one AI route (no new task/endpoint).
+- Date: 2026-07-17
 - **LIFEOS-021 — Unified graph & persistence scaling: implemented.** An
   architecture-strengthening sprint — NO new end-user feature, NO AI, NO new
   endpoints, deterministic-first and NON-BREAKING (every prior regression suite
@@ -1575,3 +1619,32 @@ scope or order.
   push + sync_meta indexes are code-complete but credential-pending. README
   unchanged. No agents, AI, endpoints, visualization, embeddings, or breaking
   changes.
+- 2026-07-17 — Implemented **LIFEOS-022 Socratic dialogue & dialectical engine**
+  (base: LIFEOS-021 on the same branch — LIFEOS-021 was never merged/PR'd, so
+  this commit stacks on top of it; the branch now carries TWO unmerged commits).
+  A structured environment to investigate an idea through disciplined dialogue —
+  deterministic-first, evidence-first, human-directed, AI-FREE (no new `/api/ai`
+  task; the Socratic engine is deterministic, matching "not a chatbot / not
+  roleplay / not autonomous reasoning"). New: `lib/dialogue/{socratic,context,
+  timeline}.ts` (deterministic Socratic-move generator with graph-grounded lines;
+  graph context reusing `lib/graph`; derived read-only timeline),
+  `components/{SocraticPrompts,DialogueThread,DialogueGraphContext,DialogueTimeline}.tsx`,
+  `app/dialogue/page.tsx` + `app/dialogue/[id]/page.tsx` (tabbed Dialogue/
+  Perspectives/Graph/Outcomes/Timeline), `supabase/migrations/0017_dialogue_engine.sql`
+  (own-rows RLS jsonb `dialogue_sessions`; 0001–0016 untouched). Modified:
+  `types/mvp.ts` (DialogueSession/DialogueTurn/Perspective/DialogueInquiry/
+  DialogueTimelineItem + status/kind/author/flag/perspective-kind unions;
+  `dialogueSessions` on StoreState), `lib/mvpStore.ts` (dialogue actions +
+  outcome spawners REUSING existing creators + hydrate mapper),
+  `lib/freshness/fingerprint.ts` (`dialogueDeps`), `lib/persistence.ts` +
+  `lib/adapters/{localAdapter,supabaseAdapter}.ts` (dialogueSessions array +
+  row mappers, dirty-gated upsert), `components/Nav.tsx` (Dialogue link),
+  `app/constitution/page.tsx` + `app/threads/[id]/page.tsx` (dialogue entry
+  points). Verified 19/19 dialogue + EVERY prior regression suite re-run green
+  (research 21, authoring 23, world 21, formation 26, decision, semantic, review,
+  threads, inquiry, compare, retrieval, reason, qa3, pdf, long-source, graph 15),
+  zero runtime errors; `lint`=0, `build`=0. Supabase `dialogue_sessions`
+  persistence is code-complete but credential-pending. README unchanged (it
+  carries no per-module list). No agents, chatbot, roleplay, autonomous
+  reasoning, web browsing, auto Constitution changes, or new AI routes beyond
+  `/api/ai`.

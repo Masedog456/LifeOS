@@ -24,6 +24,7 @@ import type {
   FormationSession,
   Framework,
   Inquiry,
+  DialogueSession,
   KnowledgeProject,
   Principle,
   ResearchProject,
@@ -60,7 +61,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks, knowledgeProjects, researchProjects] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks, knowledgeProjects, researchProjects, dialogueSessions] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -86,6 +87,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("frameworks").select("*").order("created_at", { ascending: false }),
         this.client.from("knowledge_projects").select("*").order("created_at", { ascending: false }),
         this.client.from("research_projects").select("*").order("created_at", { ascending: false }),
+        this.client.from("dialogue_sessions").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -112,7 +114,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       principles.error ||
       frameworks.error ||
       knowledgeProjects.error ||
-      researchProjects.error;
+      researchProjects.error ||
+      dialogueSessions.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -150,6 +153,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       frameworks: (frameworks.data ?? []).map(rowToFramework),
       knowledgeProjects: (knowledgeProjects.data ?? []).map(rowToProject),
       researchProjects: (researchProjects.data ?? []).map(rowToResearch),
+      dialogueSessions: (dialogueSessions.data ?? []).map(rowToDialogue),
     };
   }
 
@@ -237,6 +241,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (w("researchProjects") && state.researchProjects.length) {
       await this.throwing(this.client.from("research_projects").upsert(state.researchProjects.map(researchToRow)));
     }
+    if (w("dialogueSessions") && state.dialogueSessions.length) {
+      await this.throwing(this.client.from("dialogue_sessions").upsert(state.dialogueSessions.map(dialogueToRow)));
+    }
     this.lastState = "synced";
     this.lastError = undefined;
   }
@@ -299,6 +306,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("dialogue_sessions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("research_projects").delete().eq("user_id", uid));
     await this.throwing(this.client.from("knowledge_projects").delete().eq("user_id", uid));
     await this.throwing(this.client.from("concept_relationships").delete().eq("user_id", uid));
@@ -1155,6 +1163,41 @@ function rowToResearch(r: any): ResearchProject {
     history: (r.history ?? []) as ResearchProject["history"],
     fingerprint: (r.fingerprint ?? undefined) as ResearchProject["fingerprint"],
     seededProjectId: r.seeded_project_id ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function dialogueToRow(d: DialogueSession) {
+  return {
+    id: d.id,
+    title: d.title,
+    topic: d.topic,
+    purpose: d.purpose,
+    status: d.status,
+    participants: d.participants,
+    seed_refs: d.seedRefs,
+    turns: d.turns,
+    outcomes: d.outcomes,
+    history: d.history,
+    fingerprint: d.fingerprint ?? null,
+    created_at: d.createdAt,
+    updated_at: d.updatedAt,
+  };
+}
+function rowToDialogue(r: any): DialogueSession {
+  return {
+    id: r.id,
+    title: r.title ?? "",
+    topic: r.topic ?? "",
+    purpose: r.purpose ?? "",
+    status: (r.status ?? "open") as DialogueSession["status"],
+    participants: (r.participants ?? []) as DialogueSession["participants"],
+    seedRefs: (r.seed_refs ?? []) as string[],
+    turns: (r.turns ?? []) as DialogueSession["turns"],
+    outcomes: (r.outcomes ?? []) as DialogueSession["outcomes"],
+    history: (r.history ?? []) as DialogueSession["history"],
+    fingerprint: (r.fingerprint ?? undefined) as DialogueSession["fingerprint"],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
