@@ -88,6 +88,10 @@ overwrites your own conclusions.
 - [PERSISTENCE_QA.md](./PERSISTENCE_QA.md) — Supabase/Vercel setup steps
   (incl. email magic-link auth) and QA for durable persistence + real AI
   (LIFEOS-004 / 004.1)
+- [RELEASE_VALIDATION.md](./RELEASE_VALIDATION.md) — the v1.0.0-rc1 → v1.0.0
+  release-validation plan: production schema verification, credentialed
+  Supabase acceptance, two-user RLS test plan, seven-day dogfooding,
+  release criteria, and rollback procedure
 - [TRIAL_GUIDE.md](./TRIAL_GUIDE.md) — how to use the local prototype for
   the two-week personal trial, and how to judge whether it's valuable
 

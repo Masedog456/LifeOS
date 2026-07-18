@@ -1,0 +1,79 @@
+name: "Validation finding"
+description: "A defect or friction point found during Generation 1 release validation (RELEASE_VALIDATION.md)."
+title: "[finding] "
+labels: ["finding", "gen1-validation"]
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - "blocker — release cannot proceed"
+        - "major — must fix before v1.0.0"
+        - "minor — fix when convenient"
+        - "friction — usability/polish note"
+    validations:
+      required: true
+  - type: dropdown
+    id: data_loss
+    attributes:
+      label: Data-loss risk
+      description: Could this cause user knowledge to be lost, overwritten, or corrupted?
+      options:
+        - "yes — data was or could be lost"
+        - "no"
+        - "unsure"
+    validations:
+      required: true
+  - type: dropdown
+    id: module
+    attributes:
+      label: Affected module
+      options:
+        - Daily Home (/today)
+        - Capture
+        - Knowledge Library
+        - Belief Ledger / Inbox / Constitution
+        - World Model
+        - Research
+        - Dialogue
+        - Dialectical Workspace
+        - LifeOS Inbox (Orchestrator)
+        - Formation
+        - Reviews
+        - Decisions
+        - Graph
+        - Persistence / Sync
+        - System Health / Integrity
+        - Onboarding
+        - Navigation / other
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Sign in as test user A…
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshot or evidence
+      description: Screenshot, /health output, console log, or SQL result. Redact keys and tokens.
+    validations:
+      required: false
