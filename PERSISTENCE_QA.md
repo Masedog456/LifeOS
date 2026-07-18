@@ -158,7 +158,20 @@
     not touch migrations 0001–0016, existing rows, other tables, or their RLS.
     The dialogue engine adds no AI route — the Socratic prompt generation is
     fully deterministic.
-18. **Project Settings → API**: copy the **Project URL** and the **anon
+18. Then run `supabase/migrations/0018_dialectical_synthesis.sql` (LIFEOS-023 —
+    adds two tables for the dialectical engine: `tensions` (one jsonb-bearing row
+    per represented tension — thesis/antithesis with their source refs, evidence
+    links, four-axis `confidence`, unresolved questions, status, a stable
+    `signature` for dedupe) and `syntheses` (one row per synthesis — preserved
+    insights, discarded assumptions, common ground, remaining uncertainty,
+    four-axis `confidence`, append-only revisions, provenance outcomes). Both
+    carry own-rows RLS with full CRUD plus `user_id`/`updated_at`/`dialogue_id`
+    indexes. Additive and rerunnable (`create table/index if not exists`, guarded
+    policy creation); it does not touch migrations 0001–0017, existing rows, other
+    tables, or their RLS. The dialectical engine adds no AI route — tension
+    detection and synthesis scaffolding are fully deterministic, and no record is
+    mutated automatically.
+19. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -425,6 +438,29 @@ changes runtime behavior.
       world 21, formation 26, decision, semantic, review, threads, inquiry,
       compare, retrieval, reason, qa3, pdf, long-source, graph 15. No new AI route
       (Socratic generation is deterministic). Supabase `dialogue_sessions`
+      persistence is code-complete and credential-pending like all remote sync.
+- [x] **Dialectical synthesis & tension resolution (LIFEOS-023):** on a
+      dialogue's new **Dialectic** tab, "Detect tensions" surfaces a tension from
+      EXPLICIT signals only (here two opposing concepts, "Free will" vs
+      "Determinism"); the tension shows thesis + antithesis grounded in the user's
+      own records, the deterministic "why flagged" rationale, unresolved
+      questions, and **confidence on four separate axes** (factual / logical /
+      evidential / experiential — never a single collapsed score); "Suggest
+      candidates" offers deterministic scaffolds including a higher-order
+      integration (not a compromise) and a **deferral** that preserves the tension
+      when integration isn't justified; a candidate can be added, accepted (which
+      resolves its tension), rejected, or revised (append-only revisions); the
+      user can author their own synthesis and continue the dialogue from any
+      synthesis (a reflection turn citing it); integrating a synthesis routes a
+      belief proposal to the **Inbox** (never auto-added) and records provenance;
+      conversation memory summarises accepted/abandoned syntheses and unresolved/
+      recurring tensions; tensions + syntheses persist across reload. (22/22
+      synthesis checks.) **Non-breaking: ALL prior suites re-run green** — dialogue
+      19, research 21, authoring 23, world 21, formation 26, decision, semantic,
+      review, threads, inquiry, compare, retrieval, reason, qa3, pdf, long-source,
+      graph 15. No new AI route (detection + synthesis are deterministic).
+      Migration `0018_dialectical_synthesis.sql` applies cleanly and is idempotent
+      on a Postgres 16 schema built from 0001–0017; Supabase `tensions`/`syntheses`
       persistence is code-complete and credential-pending like all remote sync.
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,

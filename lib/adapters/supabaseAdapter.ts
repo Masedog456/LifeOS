@@ -25,6 +25,8 @@ import type {
   Framework,
   Inquiry,
   DialogueSession,
+  Tension,
+  Synthesis,
   KnowledgeProject,
   Principle,
   ResearchProject,
@@ -61,7 +63,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks, knowledgeProjects, researchProjects, dialogueSessions] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks, knowledgeProjects, researchProjects, dialogueSessions, tensions, syntheses] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -88,6 +90,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("knowledge_projects").select("*").order("created_at", { ascending: false }),
         this.client.from("research_projects").select("*").order("created_at", { ascending: false }),
         this.client.from("dialogue_sessions").select("*").order("created_at", { ascending: false }),
+        this.client.from("tensions").select("*").order("created_at", { ascending: false }),
+        this.client.from("syntheses").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -115,7 +119,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       frameworks.error ||
       knowledgeProjects.error ||
       researchProjects.error ||
-      dialogueSessions.error;
+      dialogueSessions.error ||
+      tensions.error ||
+      syntheses.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -154,6 +160,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       knowledgeProjects: (knowledgeProjects.data ?? []).map(rowToProject),
       researchProjects: (researchProjects.data ?? []).map(rowToResearch),
       dialogueSessions: (dialogueSessions.data ?? []).map(rowToDialogue),
+      tensions: (tensions.data ?? []).map(rowToTension),
+      syntheses: (syntheses.data ?? []).map(rowToSynthesis),
     };
   }
 
@@ -244,6 +252,12 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (w("dialogueSessions") && state.dialogueSessions.length) {
       await this.throwing(this.client.from("dialogue_sessions").upsert(state.dialogueSessions.map(dialogueToRow)));
     }
+    if (w("tensions") && state.tensions.length) {
+      await this.throwing(this.client.from("tensions").upsert(state.tensions.map(tensionToRow)));
+    }
+    if (w("syntheses") && state.syntheses.length) {
+      await this.throwing(this.client.from("syntheses").upsert(state.syntheses.map(synthesisToRow)));
+    }
     this.lastState = "synced";
     this.lastError = undefined;
   }
@@ -306,6 +320,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("syntheses").delete().eq("user_id", uid));
+    await this.throwing(this.client.from("tensions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("dialogue_sessions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("research_projects").delete().eq("user_id", uid));
     await this.throwing(this.client.from("knowledge_projects").delete().eq("user_id", uid));
@@ -1198,6 +1214,94 @@ function rowToDialogue(r: any): DialogueSession {
     outcomes: (r.outcomes ?? []) as DialogueSession["outcomes"],
     history: (r.history ?? []) as DialogueSession["history"],
     fingerprint: (r.fingerprint ?? undefined) as DialogueSession["fingerprint"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function tensionToRow(t: Tension) {
+  return {
+    id: t.id,
+    dialogue_id: t.dialogueId,
+    kind: t.kind,
+    title: t.title,
+    thesis: t.thesis,
+    antithesis: t.antithesis,
+    thesis_refs: t.thesisRefs,
+    antithesis_refs: t.antithesisRefs,
+    evidence: t.evidence,
+    confidence: t.confidence,
+    unresolved_questions: t.unresolvedQuestions,
+    status: t.status,
+    origin: t.origin,
+    detail: t.detail ?? null,
+    signature: t.signature,
+    history: t.history,
+    created_at: t.createdAt,
+    updated_at: t.updatedAt,
+  };
+}
+function rowToTension(r: any): Tension {
+  return {
+    id: r.id,
+    dialogueId: r.dialogue_id,
+    kind: r.kind as Tension["kind"],
+    title: r.title ?? "",
+    thesis: r.thesis ?? "",
+    antithesis: r.antithesis ?? "",
+    thesisRefs: (r.thesis_refs ?? []) as string[],
+    antithesisRefs: (r.antithesis_refs ?? []) as string[],
+    evidence: (r.evidence ?? []) as Tension["evidence"],
+    confidence: (r.confidence ?? {}) as Tension["confidence"],
+    unresolvedQuestions: (r.unresolved_questions ?? []) as string[],
+    status: (r.status ?? "open") as Tension["status"],
+    origin: (r.origin ?? "detected") as Tension["origin"],
+    detail: r.detail ?? undefined,
+    signature: r.signature ?? "",
+    history: (r.history ?? []) as Tension["history"],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function synthesisToRow(s: Synthesis) {
+  return {
+    id: s.id,
+    dialogue_id: s.dialogueId,
+    tension_ids: s.tensionIds,
+    statement: s.statement,
+    preserved_insights: s.preservedInsights,
+    discarded_assumptions: s.discardedAssumptions,
+    common_ground: s.commonGround,
+    remaining_uncertainty: s.remainingUncertainty,
+    confidence: s.confidence,
+    evidence_links: s.evidenceLinks,
+    status: s.status,
+    origin: s.origin,
+    supersedes_id: s.supersedesId ?? null,
+    revisions: s.revisions,
+    outcomes: s.outcomes,
+    created_at: s.createdAt,
+    updated_at: s.updatedAt,
+  };
+}
+function rowToSynthesis(r: any): Synthesis {
+  return {
+    id: r.id,
+    dialogueId: r.dialogue_id,
+    tensionIds: (r.tension_ids ?? []) as string[],
+    statement: r.statement ?? "",
+    preservedInsights: (r.preserved_insights ?? []) as string[],
+    discardedAssumptions: (r.discarded_assumptions ?? []) as string[],
+    commonGround: (r.common_ground ?? []) as string[],
+    remainingUncertainty: (r.remaining_uncertainty ?? []) as string[],
+    confidence: (r.confidence ?? {}) as Synthesis["confidence"],
+    evidenceLinks: (r.evidence_links ?? []) as Synthesis["evidenceLinks"],
+    status: (r.status ?? "candidate") as Synthesis["status"],
+    origin: (r.origin ?? "generated") as Synthesis["origin"],
+    supersedesId: r.supersedes_id ?? undefined,
+    revisions: (r.revisions ?? []) as Synthesis["revisions"],
+    outcomes: (r.outcomes ?? []) as Synthesis["outcomes"],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

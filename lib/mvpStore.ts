@@ -86,11 +86,21 @@ import type {
   DialogueTurnFlag,
   Perspective,
   PerspectiveKind,
+  Tension,
+  Synthesis,
+  SynthesisRevision,
+  TensionStatus,
+  DialecticTensionKind,
+  DialecticConfidence,
+  DialecticEvidenceLink,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
 import { clearState, loadState, saveLocalOnly, saveState } from "@/lib/persistence";
 import { makeFingerprint, threadDeps, weeklyDeps, conceptDeps, projectDeps, researchDeps, dialogueDeps } from "@/lib/freshness/fingerprint";
+import { detectTensions } from "@/lib/dialectic/tensions";
+import type { SynthesisCandidate } from "@/lib/dialectic/synthesis";
+import { unknownConfidence } from "@/lib/dialectic/confidence";
 import { structuralMapping, slotField } from "@/lib/world/relationships";
 import { emptyAssembly } from "@/lib/authoring/assembly";
 
@@ -118,6 +128,8 @@ const EMPTY_STATE: StoreState = {
   knowledgeProjects: [],
   researchProjects: [],
   dialogueSessions: [],
+  tensions: [],
+  syntheses: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -335,6 +347,25 @@ export function hydrate() {
           outcomes: asArray<DialogueSession["outcomes"][number]>(d?.outcomes),
           history: asArray<DialogueSession["history"][number]>(d?.history),
         })),
+        tensions: asArray<Tension>(parsed.tensions).map((t) => ({
+          ...t,
+          thesisRefs: asArray<string>(t?.thesisRefs),
+          antithesisRefs: asArray<string>(t?.antithesisRefs),
+          evidence: asArray<DialecticEvidenceLink>(t?.evidence),
+          unresolvedQuestions: asArray<string>(t?.unresolvedQuestions),
+          history: asArray<Tension["history"][number]>(t?.history),
+        })),
+        syntheses: asArray<Synthesis>(parsed.syntheses).map((s) => ({
+          ...s,
+          tensionIds: asArray<string>(s?.tensionIds),
+          preservedInsights: asArray<string>(s?.preservedInsights),
+          discardedAssumptions: asArray<string>(s?.discardedAssumptions),
+          commonGround: asArray<string>(s?.commonGround),
+          remainingUncertainty: asArray<string>(s?.remainingUncertainty),
+          evidenceLinks: asArray<DialecticEvidenceLink>(s?.evidenceLinks),
+          revisions: asArray<SynthesisRevision>(s?.revisions),
+          outcomes: asArray<Synthesis["outcomes"][number]>(s?.outcomes),
+        })),
       };
       emit();
     }
@@ -350,6 +381,7 @@ export function resetStore() {
     captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
     comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [], formationSessions: [],
     concepts: [], conceptRelationships: [], principles: [], frameworks: [], knowledgeProjects: [], researchProjects: [], dialogueSessions: [],
+    tensions: [], syntheses: [],
   });
 }
 
@@ -2472,4 +2504,268 @@ export function dialogueToBeliefProposal(dialogueId: string, text: string, const
 
 export function dialogueById(s: StoreState, dialogueId: string): DialogueSession | undefined {
   return s.dialogueSessions.find((d) => d.id === dialogueId);
+}
+
+// ---------- Dialectical synthesis & tension resolution (LIFEOS-023) ----------
+
+export function tensionById(s: StoreState, tensionId: string): Tension | undefined {
+  return s.tensions.find((t) => t.id === tensionId);
+}
+export function synthesisById(s: StoreState, synthesisId: string): Synthesis | undefined {
+  return s.syntheses.find((x) => x.id === synthesisId);
+}
+export function tensionsOf(s: StoreState, dialogueId: string): Tension[] {
+  return s.tensions.filter((t) => t.dialogueId === dialogueId);
+}
+export function synthesesOf(s: StoreState, dialogueId: string): Synthesis[] {
+  return s.syntheses.filter((x) => x.dialogueId === dialogueId);
+}
+
+/**
+ * Run deterministic tension detection over a dialogue and persist any NEW
+ * tensions (deduped by signature against those already stored). Returns the
+ * number added. Detection never resolves anything and never mutates a record.
+ */
+export function detectTensionsFor(dialogueId: string): number {
+  const session = state.dialogueSessions.find((d) => d.id === dialogueId);
+  if (!session) return 0;
+  const existing = new Set(state.tensions.filter((t) => t.dialogueId === dialogueId).map((t) => t.signature));
+  const at = now();
+  const fresh: Tension[] = detectTensions(state, session)
+    .filter((d) => !existing.has(d.signature))
+    .map((d) => ({ ...d, id: id(), history: [{ at, note: "Detected" }], createdAt: at, updatedAt: at }));
+  if (fresh.length === 0) return 0;
+  setState({ ...state, tensions: [...fresh, ...state.tensions] });
+  return fresh.length;
+}
+
+/** Author a tension by hand (for kinds the detectors don't cover, e.g. incompatible assumptions). */
+export function addTension(dialogueId: string, fields: {
+  kind: DialecticTensionKind;
+  title: string;
+  thesis: string;
+  antithesis: string;
+  thesisRefs?: string[];
+  antithesisRefs?: string[];
+  unresolvedQuestions?: string[];
+}): string | undefined {
+  if (!fields.thesis.trim() || !fields.antithesis.trim()) return undefined;
+  const at = now();
+  const thesisRefs = fields.thesisRefs ?? [];
+  const antithesisRefs = fields.antithesisRefs ?? [];
+  const t: Tension = {
+    id: id(),
+    dialogueId,
+    kind: fields.kind,
+    title: fields.title.trim() || "Tension",
+    thesis: fields.thesis.trim(),
+    antithesis: fields.antithesis.trim(),
+    thesisRefs,
+    antithesisRefs,
+    evidence: [
+      ...thesisRefs.map((refId): DialecticEvidenceLink => ({ id: `${refId}-t`, refId, label: refId, stance: "supports_thesis" })),
+      ...antithesisRefs.map((refId): DialecticEvidenceLink => ({ id: `${refId}-a`, refId, label: refId, stance: "supports_antithesis" })),
+    ],
+    confidence: unknownConfidence(),
+    unresolvedQuestions: fields.unresolvedQuestions ?? [],
+    status: "open",
+    origin: "user",
+    detail: "Authored by you.",
+    signature: `user:${id()}`,
+    history: [{ at, note: "Added by you" }],
+    createdAt: at,
+    updatedAt: at,
+  };
+  setState({ ...state, tensions: [t, ...state.tensions] });
+  return t.id;
+}
+
+function patchTension(tensionId: string, patch: (t: Tension) => Tension, note?: string): void {
+  const at = now();
+  setState({
+    ...state,
+    tensions: state.tensions.map((t) => {
+      if (t.id !== tensionId) return t;
+      const next = patch(t);
+      return { ...next, updatedAt: at, history: note ? [...t.history, { at, note }] : next.history };
+    }),
+  });
+}
+
+export function setTensionStatus(tensionId: string, status: TensionStatus): void {
+  patchTension(tensionId, (t) => ({ ...t, status }), `Marked ${status.replace(/_/g, " ")}`);
+}
+export function setTensionConfidence(tensionId: string, confidence: DialecticConfidence): void {
+  patchTension(tensionId, (t) => ({ ...t, confidence }), "Confidence updated");
+}
+export function removeTension(tensionId: string): void {
+  setState({
+    ...state,
+    tensions: state.tensions.filter((t) => t.id !== tensionId),
+    // Detach syntheses from a removed tension; drop syntheses left with no tension.
+    syntheses: state.syntheses
+      .map((s) => ({ ...s, tensionIds: s.tensionIds.filter((id) => id !== tensionId) }))
+      .filter((s) => s.tensionIds.length > 0),
+  });
+}
+
+function newSynthesis(dialogueId: string, tensionIds: string[], fields: {
+  statement: string;
+  preservedInsights?: string[];
+  discardedAssumptions?: string[];
+  commonGround?: string[];
+  remainingUncertainty?: string[];
+  confidence?: DialecticConfidence;
+  evidenceLinks?: DialecticEvidenceLink[];
+  origin: "generated" | "user";
+  supersedesId?: string;
+}): Synthesis {
+  const at = now();
+  const confidence = fields.confidence ?? unknownConfidence();
+  return {
+    id: id(),
+    dialogueId,
+    tensionIds,
+    statement: fields.statement.trim(),
+    preservedInsights: fields.preservedInsights ?? [],
+    discardedAssumptions: fields.discardedAssumptions ?? [],
+    commonGround: fields.commonGround ?? [],
+    remainingUncertainty: fields.remainingUncertainty ?? [],
+    confidence,
+    evidenceLinks: fields.evidenceLinks ?? [],
+    status: "candidate",
+    origin: fields.origin,
+    supersedesId: fields.supersedesId,
+    revisions: [{ at, statement: fields.statement.trim(), note: "Created", confidence }],
+    outcomes: [],
+    createdAt: at,
+    updatedAt: at,
+  };
+}
+
+/** Persist a generated candidate as a synthesis (status: candidate). Marks its tension under synthesis. */
+export function addSynthesisFromCandidate(dialogueId: string, tensionId: string, candidate: SynthesisCandidate): string {
+  const s = newSynthesis(dialogueId, [tensionId], { ...candidate, origin: "generated" });
+  setState({
+    ...state,
+    syntheses: [s, ...state.syntheses],
+    tensions: state.tensions.map((t) => (t.id === tensionId && t.status === "open" ? { ...t, status: "under_synthesis", updatedAt: now() } : t)),
+  });
+  return s.id;
+}
+
+/** Author your own synthesis across one or more tensions. */
+export function addUserSynthesis(dialogueId: string, tensionIds: string[], fields: {
+  statement: string;
+  preservedInsights?: string[];
+  discardedAssumptions?: string[];
+  commonGround?: string[];
+  remainingUncertainty?: string[];
+  confidence?: DialecticConfidence;
+}): string | undefined {
+  if (!fields.statement.trim()) return undefined;
+  const s = newSynthesis(dialogueId, tensionIds, { ...fields, origin: "user" });
+  setState({ ...state, syntheses: [s, ...state.syntheses] });
+  return s.id;
+}
+
+function patchSynthesis(synthesisId: string, patch: (s: Synthesis) => Synthesis): void {
+  setState({
+    ...state,
+    syntheses: state.syntheses.map((s) => (s.id === synthesisId ? { ...patch(s), updatedAt: now() } : s)),
+  });
+}
+
+/** Accept a synthesis: an explicit user act. Marks the linked tensions resolved. */
+export function acceptSynthesis(synthesisId: string): void {
+  const s = state.syntheses.find((x) => x.id === synthesisId);
+  if (!s) return;
+  const at = now();
+  setState({
+    ...state,
+    syntheses: state.syntheses.map((x) => (x.id === synthesisId ? { ...x, status: "accepted", updatedAt: at } : x)),
+    tensions: state.tensions.map((t) => (s.tensionIds.includes(t.id) ? { ...t, status: "resolved", updatedAt: at, history: [...t.history, { at, note: "Resolved by an accepted synthesis" }] } : t)),
+  });
+}
+
+export function rejectSynthesis(synthesisId: string): void {
+  patchSynthesis(synthesisId, (s) => ({ ...s, status: "rejected" }));
+}
+
+/** Revise a synthesis (append-only revision history). */
+export function reviseSynthesis(synthesisId: string, fields: { statement: string; note?: string; confidence?: DialecticConfidence }): void {
+  if (!fields.statement.trim()) return;
+  const at = now();
+  patchSynthesis(synthesisId, (s) => {
+    const confidence = fields.confidence ?? s.confidence;
+    return {
+      ...s,
+      statement: fields.statement.trim(),
+      confidence,
+      // Reviving a rejected/superseded synthesis returns it to candidate.
+      status: s.status === "accepted" ? "accepted" : "candidate",
+      revisions: [...s.revisions, { at, statement: fields.statement.trim(), note: fields.note, confidence }],
+    };
+  });
+}
+
+/** Continue the dialogue from a synthesis: append a reflection turn citing it (reuses the dialogue engine). */
+export function continueDialogueFromSynthesis(synthesisId: string): void {
+  const s = state.syntheses.find((x) => x.id === synthesisId);
+  if (!s) return;
+  addDialogueTurn(s.dialogueId, {
+    kind: "reflection",
+    text: `Continuing from a synthesis: ${s.statement}`,
+    author: "you",
+    citations: s.evidenceLinks.map((e) => e.refId),
+  });
+}
+
+function recordSynthesisOutcome(synthesisId: string, kind: string, recordId: string, label: string): void {
+  patchSynthesis(synthesisId, (s) => ({ ...s, outcomes: [...s.outcomes, { at: now(), kind, recordId, label }] }));
+}
+
+/** Integrate a synthesis into a belief proposal → Inbox (never auto-added). */
+export function synthesisToBeliefProposal(synthesisId: string, constitution = false): void {
+  const s = state.syntheses.find((x) => x.id === synthesisId);
+  if (!s || !s.statement.trim()) return;
+  sendToInbox(s.statement.trim(), [{ claim: s.statement.trim() }], "mock");
+  recordSynthesisOutcome(synthesisId, constitution ? "constitution proposal" : "belief proposal", "", s.statement.trim().slice(0, 60));
+}
+
+/** Integrate a synthesis into the World Model as a concept or principle. */
+export function synthesisToConcept(synthesisId: string, name: string): string | undefined {
+  const s = state.syntheses.find((x) => x.id === synthesisId);
+  if (!s || !name.trim()) return undefined;
+  const cid = createConcept({ name, description: s.statement, source: "user" });
+  recordSynthesisOutcome(synthesisId, "concept", cid, name.trim());
+  return cid;
+}
+export function synthesisToPrinciple(synthesisId: string): string | undefined {
+  const s = state.syntheses.find((x) => x.id === synthesisId);
+  if (!s || !s.statement.trim()) return undefined;
+  const pid = createPrinciple({ statement: s.statement, source: "user" });
+  recordSynthesisOutcome(synthesisId, "principle", pid, s.statement.trim().slice(0, 60));
+  return pid;
+}
+
+/** Integrate a synthesis into the Research Workspace, carrying its evidence as the assembly. */
+export function synthesisToResearch(synthesisId: string): string | undefined {
+  const s = state.syntheses.find((x) => x.id === synthesisId);
+  if (!s) return undefined;
+  const a = emptyAssembly();
+  for (const rid of new Set(s.evidenceLinks.map((e) => e.refId))) {
+    if (state.sources.some((x) => x.id === rid)) a.sourceIds.push(rid);
+    else if (state.beliefs.some((x) => x.id === rid)) a.beliefIds.push(rid);
+    else if (state.concepts.some((x) => x.id === rid)) a.conceptIds.push(rid);
+    else if (state.megathreads.some((x) => x.id === rid)) a.threadIds.push(rid);
+    else if (state.reasonings.some((x) => x.id === rid)) a.reasoningIds.push(rid);
+    else if (state.frameworks.some((x) => x.id === rid)) a.frameworkIds.push(rid);
+    else if (state.principles.some((x) => x.id === rid)) a.principleIds.push(rid);
+    else if (state.formationSessions.some((x) => x.id === rid)) a.formationIds.push(rid);
+    else if (state.decisions.some((x) => x.id === rid)) a.decisionIds.push(rid);
+  }
+  const rid = createResearchProject({ title: s.statement.slice(0, 60) || "Synthesis", question: s.statement, purpose: "Investigate a synthesis reached in dialogue.", assembly: a });
+  recordSynthesisOutcome(synthesisId, "research project", rid, s.statement.slice(0, 60));
+  return rid;
 }

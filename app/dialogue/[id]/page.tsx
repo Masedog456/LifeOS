@@ -25,9 +25,10 @@ import SocraticPrompts from "@/components/SocraticPrompts";
 import DialogueThread from "@/components/DialogueThread";
 import DialogueGraphContext from "@/components/DialogueGraphContext";
 import DialogueTimeline from "@/components/DialogueTimeline";
+import DialecticWorkspace from "@/components/DialecticWorkspace";
 import FreshnessBadge from "@/components/FreshnessBadge";
 
-const TABS = ["Dialogue", "Perspectives", "Graph", "Outcomes", "Timeline"] as const;
+const TABS = ["Dialogue", "Perspectives", "Dialectic", "Graph", "Outcomes", "Timeline"] as const;
 type Tab = (typeof TABS)[number];
 const STATUSES: DialogueStatus[] = ["open", "active", "paused", "concluded", "archived"];
 
@@ -112,6 +113,8 @@ export default function DialogueSessionPage() {
           </div>
         </section>
       )}
+
+      {tab === "Dialectic" && <DialecticWorkspace session={d} />}
 
       {tab === "Graph" && (
         <section>

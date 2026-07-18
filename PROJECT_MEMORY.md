@@ -23,6 +23,54 @@ pending Product Owner approval).
 
 ## 2. Current Sprint Status
 
+- Date: 2026-07-18
+- **LIFEOS-023 — Dialectical Synthesis & Tension Resolution: implemented.** Turns
+  a dialogue into genuine dialectical *reasoning*: the engine surfaces tensions
+  between the user's beliefs, assumptions, evidence and perspectives, then helps
+  build increasingly coherent syntheses. The goal is **not** debate, persuasion,
+  or winning — it is the progressive refinement of understanding, and uncertainty
+  is preserved wherever justified. Deterministic-first, evidence-first, human-
+  directed, and **AI-FREE** (no new `/api/ai` task). Built by REUSING the
+  LIFEOS-021 knowledge graph and the LIFEOS-022 dialogue context. New records:
+  `Tension` (kind ∈ conflicting_beliefs / incompatible_assumptions /
+  unresolved_paradox / competing_values / empirical_disagreement /
+  logical_inconsistency / definition_mismatch; thesis + antithesis with their
+  source refs; evidence links; separated confidence; unresolved questions;
+  status; stable `signature` for dedupe) and `Synthesis` (integrates one or more
+  tensions; preserved insights, discarded assumptions, common ground, remaining
+  uncertainty; separated confidence; append-only revisions; provenance
+  outcomes). **Tension detection** (`lib/dialectic/tensions.ts`): deterministic,
+  EXPLICIT signals only — graph `contradicts` edges, a concept's declared
+  `opposingConcepts`, ≥2 competing framework/principle perspectives, research
+  hypotheses citing evidence both ways, and unanswered challenges in the
+  transcript. Nothing inferred by language modelling; nothing auto-resolved.
+  **Synthesis generation** (`lib/dialectic/synthesis.ts`): deterministic
+  scaffolds — a higher-order **integration** (never a compromise), a **scoped**
+  resolution, and always a **deferral** that preserves the tension when
+  integration isn't justified. **Separated confidence**
+  (`lib/dialectic/confidence.ts`): factual / logical / evidential / experiential,
+  each tracked independently and NEVER collapsed into one score; `unknown` is
+  first-class. **Conversation memory** (`lib/dialectic/memory.ts`): derived
+  previous / abandoned syntheses, unresolved tensions, and recurring conflicts
+  (records recurring across tensions). **Knowledge integration**: a synthesis can
+  become a Belief/Constitution proposal (→ Inbox), a Concept or Principle (World
+  Model), or a Research project — each REUSES the existing creators and is
+  recorded as provenance; nothing mutates a record automatically. **UI**: a new
+  **Dialectical Workspace** (a "Dialectic" tab on `/dialogue/[id]`) where the
+  user inspects tensions, compares viewpoints, expands evidence, sees the
+  deterministic why-flagged rationale, accepts/rejects/revises syntheses, writes
+  their own, and continues the dialogue from any synthesis — every reasoning
+  structure inspectable, nothing hidden. Persistence: `tensions` + `syntheses`
+  arrays + local/Supabase adapters + additive migration
+  `0018_dialectical_synthesis.sql` (own-rows RLS, indexes, idempotent; 0001–0017
+  untouched). Freshness: `tensionDeps` / `synthesisDeps`. Verified: **22/22
+  synthesis checks** + **ALL prior suites re-run green** (dialogue 19, research
+  21, authoring 23, world 21, formation 26, decision, semantic, review, threads,
+  inquiry, compare, retrieval, reason, qa3, pdf, long-source, graph 15); migration
+  applied + idempotent on a real Postgres 16 schema built from 0001–0017;
+  `lint`/`build` green. Still one AI route (no new task/endpoint). Reasoning-
+  record integration is deferred (reasonings require the AI route) — noted as a
+  future extension.
 - Date: 2026-07-17
 - **LIFEOS-022 — Socratic Dialogue & Dialectical Engine: implemented.** A
   structured environment to *investigate* an idea through disciplined dialogue —
@@ -1648,3 +1696,28 @@ scope or order.
   carries no per-module list). No agents, chatbot, roleplay, autonomous
   reasoning, web browsing, auto Constitution changes, or new AI routes beyond
   `/api/ai`.
+- 2026-07-18 — Implemented **LIFEOS-023 dialectical synthesis & tension
+  resolution** (base: LIFEOS-022 on `main`; branch restarted from `origin/main`).
+  Deterministic, evidence-first, AI-FREE. New: `lib/dialectic/{confidence,
+  tensions,synthesis,memory}.ts` (separated four-axis confidence; explicit-signal
+  tension detection reusing the graph + dialogue context; deterministic synthesis
+  scaffolds incl. a deferral that preserves uncertainty; derived conversation
+  memory), `components/{ConfidenceMeter,TensionCard,SynthesisPanel,
+  DialecticWorkspace}.tsx`, a "Dialectic" tab on `app/dialogue/[id]/page.tsx`,
+  `supabase/migrations/0018_dialectical_synthesis.sql` (own-rows-RLS `tensions` +
+  `syntheses`; indexes; idempotent; 0001–0017 untouched). Modified: `types/mvp.ts`
+  (Tension/Synthesis/DialecticConfidence/DialecticEvidenceLink/SynthesisRevision
+  + `DialecticTensionKind`/`TensionStatus`/`SynthesisStatus`; `tensions` +
+  `syntheses` on StoreState), `lib/mvpStore.ts` (detect/author/status actions +
+  synthesis accept/reject/revise/continue + integration spawners REUSING existing
+  creators + hydrate mapper), `lib/freshness/fingerprint.ts` (`tensionDeps`/
+  `synthesisDeps`), `lib/persistence.ts` + `lib/adapters/{localAdapter,
+  supabaseAdapter}.ts` (two arrays + row mappers, dirty-gated upsert). Verified
+  22/22 synthesis + EVERY prior suite re-run green (dialogue 19, research 21,
+  authoring 23, world 21, formation 26, decision, semantic, review, threads,
+  inquiry, compare, retrieval, reason, qa3, pdf, long-source, graph 15); migration
+  applied + idempotent on a real Postgres 16 schema built from 0001–0017;
+  `lint`=0, `build`=0. Supabase `tensions`/`syntheses` persistence is
+  code-complete but credential-pending. README unchanged. No agents, debate/
+  persuasion engine, autonomous reasoning, auto record mutation, or new AI routes
+  beyond `/api/ai`. Reasoning-record integration deferred (needs the AI route).
