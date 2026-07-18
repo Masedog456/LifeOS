@@ -143,7 +143,13 @@
     itself is DERIVED in memory and needs no tables). Additive and rerunnable;
     it does not modify migrations 0001–0015, any existing row, table, or RLS
     policy — the whole-state sync path keeps working unchanged, and the new
-    incremental path pushes only changed domains.
+    incremental path pushes only changed domains. Each incremental-load index is
+    created only if its target table and columns already exist (guarded by a
+    `do $$` block), so applying 0016 on a database that has not yet run every
+    earlier feature migration simply **skips** that domain's index (emitting a
+    `NOTICE`) instead of aborting — it never creates a placeholder table. Apply
+    the missing feature migration (e.g. `0006_dialectical_intelligence.sql` for
+    `inquiries`) and re-run 0016 to add the skipped index (0016 is idempotent).
 17. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
