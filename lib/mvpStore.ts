@@ -93,6 +93,7 @@ import type {
   DialecticTensionKind,
   DialecticConfidence,
   DialecticEvidenceLink,
+  Recommendation,
 } from "@/types/mvp";
 import { emptyAnalysis, emptyStages } from "@/types/mvp";
 import type { ProposalDraft } from "@/lib/proposals";
@@ -101,6 +102,7 @@ import { makeFingerprint, threadDeps, weeklyDeps, conceptDeps, projectDeps, rese
 import { detectTensions } from "@/lib/dialectic/tensions";
 import type { SynthesisCandidate } from "@/lib/dialectic/synthesis";
 import { unknownConfidence } from "@/lib/dialectic/confidence";
+import { runScanners, mergeRecommendations } from "@/lib/orchestrator";
 import { structuralMapping, slotField } from "@/lib/world/relationships";
 import { emptyAssembly } from "@/lib/authoring/assembly";
 
@@ -130,6 +132,7 @@ const EMPTY_STATE: StoreState = {
   dialogueSessions: [],
   tensions: [],
   syntheses: [],
+  recommendations: [],
 };
 
 let state: StoreState = EMPTY_STATE;
@@ -366,6 +369,10 @@ export function hydrate() {
           revisions: asArray<SynthesisRevision>(s?.revisions),
           outcomes: asArray<Synthesis["outcomes"][number]>(s?.outcomes),
         })),
+        recommendations: asArray<Recommendation>(parsed.recommendations).map((r) => ({
+          ...r,
+          affected: asArray<Recommendation["affected"][number]>(r?.affected),
+        })),
       };
       emit();
     }
@@ -381,7 +388,7 @@ export function resetStore() {
     captures: [], proposals: [], beliefs: [], sources: [], feedback: [],
     comparisons: [], inquiries: [], megathreads: [], reflections: [], practices: [], reviews: [], reasonings: [], embeddings: [], decisions: [], formationSessions: [],
     concepts: [], conceptRelationships: [], principles: [], frameworks: [], knowledgeProjects: [], researchProjects: [], dialogueSessions: [],
-    tensions: [], syntheses: [],
+    tensions: [], syntheses: [], recommendations: [],
   });
 }
 
@@ -2768,4 +2775,45 @@ export function synthesisToResearch(synthesisId: string): string | undefined {
   const rid = createResearchProject({ title: s.statement.slice(0, 60) || "Synthesis", question: s.statement, purpose: "Investigate a synthesis reached in dialogue.", assembly: a });
   recordSynthesisOutcome(synthesisId, "research project", rid, s.statement.slice(0, 60));
   return rid;
+}
+
+// ---------- Cognitive orchestration & active intelligence (LIFEOS-024) ----------
+
+/**
+ * Run every scanner over the current store and merge the resulting proposals
+ * into `state.recommendations` (deduped by signature; existing lifecycle
+ * preserved). Deterministic and read-only over knowledge — the orchestrator
+ * generates opportunities, never content, and mutates no other record.
+ */
+export function refreshRecommendations(): number {
+  const before = state.recommendations.length;
+  const proposals = runScanners(state);
+  const merged = mergeRecommendations(state.recommendations, proposals, now(), id);
+  setState({ ...state, recommendations: merged });
+  return merged.length - before;
+}
+
+function patchRecommendation(recId: string, patch: (r: Recommendation) => Recommendation): void {
+  setState({ ...state, recommendations: state.recommendations.map((r) => (r.id === recId ? patch(r) : r)) });
+}
+
+export function acceptRecommendation(recId: string): void {
+  patchRecommendation(recId, (r) => ({ ...r, accepted: true, snoozedUntil: undefined }));
+}
+export function dismissRecommendation(recId: string): void {
+  patchRecommendation(recId, (r) => ({ ...r, dismissed: true, snoozedUntil: undefined }));
+}
+export function completeRecommendation(recId: string): void {
+  patchRecommendation(recId, (r) => ({ ...r, completed: true, snoozedUntil: undefined }));
+}
+export function snoozeRecommendation(recId: string, days = 7): void {
+  const until = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  patchRecommendation(recId, (r) => ({ ...r, snoozedUntil: until }));
+}
+export function reopenRecommendation(recId: string): void {
+  patchRecommendation(recId, (r) => ({ ...r, accepted: false, dismissed: false, completed: false, snoozedUntil: undefined }));
+}
+
+export function recommendationById(s: StoreState, recId: string): Recommendation | undefined {
+  return s.recommendations.find((r) => r.id === recId);
 }

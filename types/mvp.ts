@@ -1993,6 +1993,81 @@ export interface Synthesis {
   updatedAt: ISO;
 }
 
+// ---------- Cognitive orchestration & active intelligence (LIFEOS-024) ----------
+
+/**
+ * The subsystems the orchestrator coordinates. A recommendation names the
+ * subsystem that ORIGINATED it (the scanner that produced it). Scanners never
+ * depend on one another — they read the store and emit proposals; the
+ * orchestrator merges them.
+ */
+export type OrchestratorSubsystem =
+  | "belief"
+  | "research"
+  | "graph"
+  | "dialogue"
+  | "review"
+  | "formation"
+  | "decision"
+  | "world";
+
+/**
+ * What a recommendation proposes. The orchestrator generates OPPORTUNITIES, not
+ * content — every type maps to a subsystem the user may choose to engage.
+ */
+export type RecommendationType =
+  | "open_dialogue"            // a belief contradicts another → investigate in dialogue
+  | "create_synthesis"        // research evidence conflicts with an accepted belief → synthesise
+  | "create_research_question"// a synthesis keeps failing → open a research question
+  | "elevate_concept"         // a concept appears in many places → strengthen it in the world model
+  | "merge_duplicate_concepts"// two concepts look like duplicates → merge
+  | "new_principle"           // a concept underpins many beliefs → consider a principle
+  | "formation_exercise"      // a conflict recurs across dialogues → a formation reflection
+  | "review_belief"           // a belief has not been reviewed for months → review
+  | "import_source"           // a dialogue references a missing record → import a source
+  | "unresolved_tension"      // a tension has stayed open → return to it
+  | "confidence_decline"      // confidence keeps decreasing → surface it
+  | "repeat_reflection"       // a daily practice suggests repeating today's reflection
+  | "revisit_decision";       // a decided decision is due for an outcome review
+
+export type RecommendationPriority = "low" | "medium" | "high";
+
+/** An object a recommendation concerns — a reference, never a copy. */
+export interface RecommendationTarget {
+  kind: string;
+  id: string;
+  label: string;
+}
+
+/**
+ * A single deterministic recommendation produced by a scanner and surfaced in
+ * the LifeOS Inbox. LifeOS never acts on a recommendation automatically — the
+ * user accepts, dismisses, snoozes, or completes it. Nothing here modifies
+ * knowledge.
+ */
+export interface Recommendation {
+  id: string;
+  type: RecommendationType;
+  priority: RecommendationPriority;
+  /** How strongly the deterministic signal fired (qualitative, never a fake score). */
+  confidence: ConfidenceLevel;
+  rationale: string;
+  /** The subsystem whose scanner produced this. */
+  subsystem: OrchestratorSubsystem;
+  suggestedAction: string;
+  /** Where "act on this" / "jump to" navigates (an existing route). */
+  actionHref?: string;
+  affected: RecommendationTarget[];
+  /** Stable dedupe key (type + sorted affected ids) — re-scanning never duplicates. */
+  signature: string;
+  createdAt: ISO;
+  dismissed: boolean;
+  accepted: boolean;
+  completed: boolean;
+  /** ISO date until which the recommendation is hidden (snoozed). */
+  snoozedUntil?: ISO;
+}
+
 export interface StoreState {
   captures: Capture[];
   proposals: Proposal[];
@@ -2018,4 +2093,5 @@ export interface StoreState {
   dialogueSessions: DialogueSession[];
   tensions: Tension[];
   syntheses: Synthesis[];
+  recommendations: Recommendation[];
 }

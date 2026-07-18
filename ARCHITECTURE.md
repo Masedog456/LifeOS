@@ -830,6 +830,60 @@ knowledge graph and the LIFEOS-022 dialogue context.
   confidence, indexes); additive and idempotent. No table/row/RLS/migration
   0001–0017 is modified.
 
+## Cognitive orchestration & active intelligence (LIFEOS-024 — implemented)
+
+Makes the subsystems collaborate. A lightweight **Cognitive Orchestrator**
+observes the store and coordinates the existing modules so the user no longer
+has to decide which subsystem to reach for. It generates **opportunities, not
+content**: deterministic `Recommendation`s surfaced in a single **LifeOS Inbox**.
+No AI (adds no `/api/ai` task); nothing is executed automatically and no
+knowledge is ever mutated.
+
+- **Architecture invariant.** *No subsystem depends on another — all
+  coordination flows through the orchestrator.* Each scanner is a pure,
+  deterministic read over `StoreState` that inspects ONLY its own subsystem and
+  returns proposals; scanners never import one another. The orchestrator
+  (`lib/orchestrator/index.ts`) is the sole merge point, so there are no circular
+  dependencies and the coupling surface stays flat.
+- **Recommendation** (`types/mvp.ts`). type / priority / confidence (the
+  LIFEOS-023 four-value `ConfidenceLevel`) / rationale / originating `subsystem` /
+  `suggestedAction` / `actionHref` / `affected` (references) / stable `signature` /
+  createdAt / `dismissed` / `accepted` / `completed` / `snoozedUntil`.
+- **Scanners** (`lib/orchestrator/scanners/*.ts`, one per subsystem):
+  - **belief** → `open_dialogue` — two accepted beliefs in tension (a
+    `contradicts` edge, or resting on declared opposing concepts) with no
+    dialogue yet investigating them.
+  - **research** → `create_synthesis` — a project references an accepted belief
+    and holds a hypothesis with contradicting evidence.
+  - **graph** → `elevate_concept` (well-connected but under-structured) /
+    `merge_duplicate_concepts` (same name or alias overlap).
+  - **world** → `new_principle` — a concept underpins several beliefs but is not
+    yet a principle.
+  - **dialogue** → `unresolved_tension`, `create_research_question` (a tension's
+    syntheses keep failing), `formation_exercise` (a record recurs in tensions
+    across dialogues), `import_source` (a dialogue cites a record that no longer
+    exists), `confidence_decline` (a synthesis's confidence keeps dropping).
+  - **review** → `review_belief` — held for months without review.
+  - **formation** → `repeat_reflection` — an accepted recurring practice.
+  - **decision** → `revisit_decision` — decided but never outcome-reviewed.
+- **The orchestrator.** `runScanners(state)` runs every scanner and dedupes by
+  signature; `mergeRecommendations(existing, proposals, …)` refreshes matching
+  recommendations while **preserving the user's accept/dismiss/snooze/complete
+  decisions**, adds new ones, keeps engaged-with recommendations whose signal has
+  gone (audit trail), and drops only un-engaged stale ones. Sorted
+  most-actionable first (priority, then recency; stable within a scan).
+- **UI — the LifeOS Inbox** (`app/orchestrator/page.tsx` + `RecommendationCard`).
+  Filter by status / priority / subsystem; each card shows its priority,
+  subsystem, confidence, affected-object chips, and an inspectable rationale
+  ("Why am I seeing this?"), with **Act on this →** (jump to the originating
+  object), **Done**, **Snooze**, **Dismiss**, and **Reopen**. Nothing is executed
+  automatically — accepting merely marks the recommendation and navigates.
+- **Persistence.** `recommendations` array persists through both adapters
+  (dirty-gated). Migration `0019_cognitive_orchestrator.sql` adds an
+  own-rows-RLS `recommendations` table (jsonb `affected`, lifecycle flags,
+  indexes on user/created, subsystem, type, and signature); additive and
+  idempotent. No table/row/RLS/migration 0001–0018 is modified.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on
