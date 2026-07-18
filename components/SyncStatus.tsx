@@ -16,23 +16,30 @@ const DOT: Record<PersistenceHealth["state"], string> = {
   syncing: "bg-amber-500",
   synced: "bg-emerald-500",
   failed: "bg-red-500",
+  offline: "bg-sky-500",
+  retrying: "bg-amber-500",
 };
 
 const LABEL: Record<PersistenceHealth["state"], string> = {
   local: "Saved locally",
   disabled: "Saved locally",
-  syncing: "Syncing…",
-  synced: "Synced",
-  failed: "Sync failed",
+  syncing: "Saving…",
+  synced: "Saved",
+  failed: "Sync error",
+  offline: "Offline — saved locally",
+  retrying: "Retrying…",
 };
 
 export default function SyncStatus() {
   const h = useHealth();
+  const label = h.localError ? "Local save failed" : LABEL[h.state];
+  const dot = h.localError ? "bg-red-500" : DOT[h.state];
   return (
-    <span className="flex items-center gap-1.5 text-xs text-zinc-400" title={h.error ?? undefined}>
-      <span className={`h-2 w-2 rounded-full ${DOT[h.state]}`} />
-      {LABEL[h.state]}
-      {h.state === "failed" && (
+    <span className="flex items-center gap-1.5 text-xs text-zinc-400" title={h.localError ?? h.error ?? undefined}>
+      <span className={`h-2 w-2 rounded-full ${dot}`} />
+      {label}
+      {h.state === "retrying" && h.retryAttempt ? <span className="text-[10px]">({h.retryAttempt}/5)</span> : null}
+      {(h.state === "failed" || h.state === "retrying") && (
         <button
           type="button"
           onClick={() => void retrySync()}

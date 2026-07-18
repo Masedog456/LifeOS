@@ -17,12 +17,23 @@ import type {
   StoreState,
 } from "@/types/mvp";
 
-export type SyncState = "local" | "syncing" | "synced" | "failed" | "disabled";
+export type SyncState =
+  | "local"
+  | "syncing"
+  | "synced"
+  | "failed"
+  | "disabled"
+  | "offline"
+  | "retrying";
 
 export interface PersistenceHealth {
   mode: "local" | "supabase";
   state: SyncState;
   error?: string;
+  /** Local (localStorage) write failure — quota/serialization (LIFEOS-025). */
+  localError?: string;
+  /** Current automatic-retry attempt (LIFEOS-025), when state is "retrying". */
+  retryAttempt?: number;
 }
 
 export interface PersistenceAdapter {

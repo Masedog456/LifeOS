@@ -24,6 +24,61 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-18
+- **LIFEOS-025 — Generation 1 Hardening, Coherence & Daily Use: implemented.**
+  The capstone sprint: no new reasoning subsystem — the existing product becomes
+  a coherent, reliable daily-use system, formally completing Generation 1.
+  (1) **Daily Home** (`/today`): a pure PROJECTION over existing state — needs
+  attention (active recommendations), to review (pending proposals), continue
+  (open dialogues + unresolved tensions), active research, open decisions, due
+  reviews (90-day-stale beliefs), practices, recent captures, and recently
+  completed. Duplicates nothing; viewing creates no records. (2) **Navigation
+  IA**: grouped Primary nav (Today · Capture/Inbox · Knowledge: Library/World/
+  Constitution · Reasoning: Compare/Inquiry/Threads/Reason/Research/Dialogue/
+  Author · Reflection: Reflect/Review · Action: Decide/Orchestrator · System:
+  Health) — consistent naming (no renames of existing destinations), no
+  duplicate destinations, keyboard-accessible, mobile-fitting, and the brand
+  mark is a persistent link back to Daily Home from every page. (3)
+  **Onboarding** (`/welcome`): a four-step first-run tour (what LifeOS is + the
+  cognitive loop; a REAL first capture in the user's own words — nothing
+  synthetic planted; the first-belief judgment loop with the live Inbox count;
+  the LifeOS Inbox + a suggested next step). Skippable at every step,
+  restartable, persisted per user (localStorage `lifeos.prefs.v1` + own-rows
+  `user_prefs` mirror, migration 0020). (4) **Persistence hardening** (audit +
+  fixes): silent localStorage failures now surfaced + logged; corrupt local
+  data is PRESERVED under a backup key (never silently overwritten) and
+  surfaced; automatic retry with capped exponential backoff (5 attempts) then
+  manual retry; explicit offline state with auto-flush on reconnect; in-flight
+  guard prevents interleaved/duplicate remote writes; adoption gate closes the
+  hydration race where a write could push before the local↔remote reconcile
+  decision; recent-save-errors ring buffer. The `SyncStatus` indicator now
+  reflects REAL states: saved / saving / offline / retrying / error /
+  local-only. (5) **System Health** (`/health`, production-visible):
+  deterministic + observational — persistence connectivity/config, schema +
+  migration compatibility, hydration, recommendation-scan + graph-build status,
+  record counts by domain, orphaned references, duplicate signatures, stale
+  sync baseline, recent save errors, corrupt-backup presence; human-readable
+  remediation on every finding; no secrets. (6) **Data integrity**
+  (`lib/integrity/checks.ts`): 10 deterministic READ-ONLY checks (missing
+  referenced records, duplicate signatures, invalid statuses, malformed
+  confidence, orphaned graph records, syntheses w/o tensions, tensions w/o
+  dialogues, recommendations→missing records, revision ordering, ownership
+  model); the single repair offered (drop stale recommendations) touches only
+  DERIVED data and is recreatable by re-scan — knowledge is never auto-deleted
+  or rewritten. (7) **Generation 1 readiness scorecard** on /health: ten
+  dimensions each with status/evidence/known gaps/blocking flag — no decorative
+  single score. (8) `app/error.tsx`: recoverable error boundary (no raw
+  exceptions; data-safety message + reset + Daily Home). Migration
+  `0020_generation_one_hardening.sql`: additive own-rows `user_prefs` only
+  (health/integrity/diagnostics stay derived — no speculative tables).
+  Verified: **41/41 gen1 checks** (onboarding, projection purity, nav IA,
+  keyboard focus, health panel, integrity + safe repair, corrupt-blob recovery,
+  empty-state sweep across 12 primary modules, mobile viewports) + **ALL prior
+  suites re-run green** (orchestration 22, synthesis 22, dialogue 19, research
+  21, authoring 23, world 21, formation 26, decision, semantic, review,
+  threads, inquiry, compare, retrieval, reason, qa3, pdf, long-source, graph
+  15, auth, sync); migration applied + idempotent on Postgres 16 built from
+  0001–0019; `lint`/`build` green. Still one AI route.
+- Date: 2026-07-18
 - **LIFEOS-024 — Cognitive Orchestration & Active Intelligence: implemented.**
   Makes the subsystems collaborate: a lightweight **Cognitive Orchestrator**
   observes the store and coordinates existing modules so the user no longer has
@@ -1787,3 +1842,28 @@ scope or order.
   code-complete but credential-pending. README unchanged. No agents, autonomous
   actions, auto record mutation, content generation, or new AI routes beyond
   `/api/ai` — the orchestrator only surfaces deterministic opportunities.
+- 2026-07-18 — Implemented **LIFEOS-025 Generation 1 hardening, coherence &
+  daily use** (base: LIFEOS-024 on `main`; branch restarted from `origin/main`).
+  The Gen-1 capstone: no new reasoning subsystem. New: `app/today/page.tsx`
+  (Daily Home — pure projection, duplicates nothing), `app/welcome/page.tsx`
+  (skippable/restartable 4-step onboarding; real first capture, never synthetic
+  data), `app/health/page.tsx` (System Health + Generation 1 readiness
+  scorecard; observational, no secrets), `app/error.tsx` (recoverable error
+  boundary), `lib/integrity/checks.ts` (10 deterministic read-only checks +
+  one safe derived-data repair), `lib/prefs.ts` (per-user prefs, local-first +
+  `user_prefs` mirror), `supabase/migrations/0020_generation_one_hardening.sql`
+  (own-rows `user_prefs` only). Modified: `lib/persistence.ts` (retry w/
+  backoff, offline detection + reconnect flush, in-flight guard, adoption gate
+  vs hydration race, corrupt-blob backup, surfaced local-save failures,
+  save-error ring buffer), `lib/adapters/types.ts` (SyncState + offline/
+  retrying + localError/retryAttempt), `components/SyncStatus.tsx` (real
+  states: saved/saving/offline/retrying/error/local-only),
+  `components/Nav.tsx` (grouped Gen-1 IA; brand → Daily Home; Health entry),
+  `lib/mvpStore.ts` (`repairStaleRecommendations`). Verified 41/41 gen1 +
+  EVERY prior suite re-run green (orchestration 22, synthesis 22, dialogue 19,
+  research 21, authoring 23, world 21, formation 26, decision, semantic,
+  review, threads, inquiry, compare, retrieval, reason, qa3, pdf, long-source,
+  graph 15, auth, sync); 0020 applied + idempotent on Postgres 16 from
+  0001–0019; mobile viewports clean at 390px; `lint`=0, `build`=0. README
+  unchanged. No agents, no new AI routes, no speculative ontology, no
+  auto-mutation — Daily Home and System Health are projections/observations.

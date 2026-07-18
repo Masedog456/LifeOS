@@ -884,6 +884,73 @@ knowledge is ever mutated.
   indexes on user/created, subsystem, type, and signature); additive and
   idempotent. No table/row/RLS/migration 0001–0018 is modified.
 
+## Generation 1 hardening, coherence & daily use (LIFEOS-025 — implemented)
+
+The Generation 1 capstone: no new reasoning subsystem — the existing product
+becomes a coherent, reliable daily-use system. Current boundaries are
+preserved: Daily Home is a projection layer (not a new source of truth), System
+Health is observational, integrity checks are deterministic, and no module
+mutates another by being viewed. No new AI route.
+
+- **Daily Home** (`app/today/page.tsx`). A pure projection composing what needs
+  attention (active recommendations), what to review (pending proposals +
+  90-day-stale beliefs), what to continue (open dialogues, unresolved tensions,
+  active research, open decisions), practices, recent captures, and recently
+  completed work. Every card links to the record itself — nothing duplicated,
+  nothing created on view. The brand mark in the nav returns here from every
+  page.
+- **Navigation IA** (`components/Nav.tsx`). One destination per capability,
+  grouped by kind of work: Today · Capture (Capture, Inbox) · Knowledge
+  (Library, World, Constitution) · Reasoning (Compare, Inquiry, Threads,
+  Reason, Research, Dialogue, Author) · Reflection (Reflect, Review) · Action
+  (Decide, Orchestrator) · System (Health). No renames of existing
+  destinations, no duplicates, plain keyboard-focusable links, `aria-label`ed
+  primary nav, mobile-fitting.
+- **Onboarding** (`app/welcome/page.tsx` + `lib/prefs.ts`). Four steps: the
+  cognitive loop; a REAL first capture (the user's words — nothing synthetic is
+  planted); the first-belief judgment loop with the live Inbox count; Daily
+  Home + the LifeOS Inbox as the daily anchors with one suggested next step.
+  Skippable at every step, restartable, persisted per user (localStorage
+  `lifeos.prefs.v1`, mirrored best-effort to own-rows `user_prefs` when signed
+  in).
+- **Persistence hardening** (`lib/persistence.ts`). Fixes from an end-to-end
+  audit: (a) silent localStorage failures now surfaced on the indicator and
+  logged; (b) an unparseable local blob is PRESERVED under a backup key and
+  surfaced — never silently overwritten by the next save; (c) automatic retry
+  with capped exponential backoff (5 attempts) plus manual retry; (d) explicit
+  `offline` state with automatic flush on reconnect; (e) an in-flight guard
+  prevents interleaved/duplicate remote writes; (f) an adoption gate closes the
+  hydration race where a write could push local state before the local↔remote
+  reconcile decision; (g) a recent-save-errors ring buffer feeds System Health.
+  `SyncStatus` reflects REAL states: saved / saving / offline / retrying /
+  error / local-only.
+- **System Health** (`app/health/page.tsx`). Deterministic and observational:
+  persistence connectivity + configuration, schema/migration compatibility,
+  hydration, recommendation-scan and graph-build status, per-domain record
+  counts, integrity findings with remediation guidance, corrupt-backup
+  presence, and recent save errors. No secrets. Includes the **Generation 1
+  readiness scorecard**: ten dimensions (functional completeness, persistence
+  reliability, test coverage, data integrity, navigation coherence,
+  accessibility, performance, onboarding, observability, recovery behavior),
+  each with status, evidence, known gaps, and a blocking flag — deliberately
+  not one decorative score.
+- **Data integrity** (`lib/integrity/checks.ts`). Ten read-only deterministic
+  checks: missing referenced records, duplicate signatures, invalid status
+  values, malformed confidence structures, orphaned graph records, syntheses
+  without valid tensions, tensions without valid dialogues, recommendations
+  pointing at missing records, revision-history ordering, and the ownership
+  model (local records carry no user id by design; remote rows are owned via
+  RLS defaults). The single repair (`repairStaleRecommendations`) removes only
+  derived recommendations — recreatable by re-scan; knowledge is never
+  auto-deleted or rewritten.
+- **Error containment** (`app/error.tsx`). A recoverable route-segment error
+  boundary: no raw exceptions reach the user; local-first writes mean no data
+  loss; reset + Daily Home escape hatch.
+- **Persistence.** Migration `0020_generation_one_hardening.sql` adds only the
+  own-rows-RLS `user_prefs` key/value table (onboarding state). Health,
+  diagnostics, and integrity findings are derived at view time by design. No
+  table/row/RLS/migration 0001–0019 is modified.
+
 ## Future vector search layer
 
 Not implemented. When built, the expected approach is `pgvector` on
