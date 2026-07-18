@@ -24,6 +24,45 @@ pending Product Owner approval).
 ## 2. Current Sprint Status
 
 - Date: 2026-07-18
+- **LIFEOS-024 — Cognitive Orchestration & Active Intelligence: implemented.**
+  Makes the subsystems collaborate: a lightweight **Cognitive Orchestrator**
+  observes the store and coordinates existing modules so the user no longer has
+  to decide which subsystem to reach for. It generates **opportunities, not
+  content** — deterministic `Recommendation`s surfaced in a single **LifeOS
+  Inbox** (`/orchestrator`). NO AI (adds no `/api/ai` task); nothing is ever
+  executed automatically and no knowledge is mutated. **Architecture invariant:
+  no subsystem depends on another — all communication flows through the
+  orchestrator.** Eight deterministic, read-only **scanners**
+  (`lib/orchestrator/scanners/{belief,research,graph,dialogue,review,formation,
+  decision,world}.ts`), each inspecting ONLY its own subsystem and returning
+  proposals: belief→`open_dialogue` (two accepted beliefs in tension via a
+  contradicts edge or opposing concepts); research→`create_synthesis` (a project
+  cites evidence against an accepted belief); graph→`elevate_concept` /
+  `merge_duplicate_concepts`; world→`new_principle`; dialogue→`unresolved_tension`
+  / `create_research_question` (repeated synthesis failure) / `formation_exercise`
+  (recurring cross-dialogue conflict) / `import_source` (missing referenced
+  record) / `confidence_decline` (a synthesis's confidence keeps dropping);
+  review→`review_belief` (unreviewed for months); formation→`repeat_reflection`;
+  decision→`revisit_decision` (decided, no outcome review). The orchestrator
+  (`lib/orchestrator/index.ts`) runs the scanners, dedupes by signature, and
+  MERGES with stored recommendations — preserving the user's accept/dismiss/
+  snooze/complete decisions and dropping only un-engaged recommendations whose
+  signal disappeared. `Recommendation` carries type / priority / confidence /
+  rationale / originating subsystem / suggested action / affected objects /
+  timestamp / dismissed / accepted / completed / snoozedUntil. **UI**: the LifeOS
+  Inbox filters by status / priority / subsystem; each card shows priority,
+  subsystem, confidence, affected chips, an inspectable rationale ("Why am I
+  seeing this?"), and Act-on-this (jump to the originating object) / Done /
+  Snooze / Dismiss / Reopen. Persistence: `recommendations` array + local/Supabase
+  adapters + additive migration `0019_cognitive_orchestrator.sql` (own-rows RLS,
+  indexes on user/created/subsystem/type/signature, idempotent; 0001–0018
+  untouched). Verified: **22/22 orchestration checks** + **ALL prior suites
+  re-run green** (synthesis 22, dialogue 19, research 21, authoring 23, world 21,
+  formation 26, decision, semantic, review, threads, inquiry, compare, retrieval,
+  reason, qa3, pdf, long-source, graph 15); migration applied + idempotent on a
+  real Postgres 16 schema built from 0001–0018; `lint`/`build` green. Still one
+  AI route (no new task/endpoint).
+- Date: 2026-07-18
 - **LIFEOS-023 — Dialectical Synthesis & Tension Resolution: implemented.** Turns
   a dialogue into genuine dialectical *reasoning*: the engine surfaces tensions
   between the user's beliefs, assumptions, evidence and perspectives, then helps
@@ -1721,3 +1760,30 @@ scope or order.
   code-complete but credential-pending. README unchanged. No agents, debate/
   persuasion engine, autonomous reasoning, auto record mutation, or new AI routes
   beyond `/api/ai`. Reasoning-record integration deferred (needs the AI route).
+- 2026-07-18 — Implemented **LIFEOS-024 cognitive orchestration & active
+  intelligence** (base: LIFEOS-023 on `main`; branch restarted from `origin/main`).
+  Deterministic, read-only, AI-FREE. New: `lib/orchestrator/index.ts` (lightweight
+  orchestrator: run scanners, dedupe by signature, merge preserving user
+  decisions), `lib/orchestrator/types.ts` (scanner contract + signature helper),
+  `lib/orchestrator/scanners/{belief,research,graph,dialogue,review,formation,
+  decision,world}.ts` (eight pure per-subsystem scanners — no scanner imports
+  another), `components/RecommendationCard.tsx`, `app/orchestrator/page.tsx`
+  (the LifeOS Inbox: filter by status/priority/subsystem, accept/dismiss/snooze/
+  complete, inspect rationale, jump to originating object),
+  `supabase/migrations/0019_cognitive_orchestrator.sql` (own-rows-RLS
+  `recommendations`; indexes; idempotent; 0001–0018 untouched). Modified:
+  `types/mvp.ts` (Recommendation + RecommendationType/Priority/Target +
+  OrchestratorSubsystem; `recommendations` on StoreState), `lib/mvpStore.ts`
+  (refreshRecommendations + accept/dismiss/snooze/complete/reopen + hydrate
+  mapper), `lib/persistence.ts` + `lib/adapters/{localAdapter,supabaseAdapter}.ts`
+  (recommendations array + row mappers, dirty-gated upsert), `components/Nav.tsx`
+  (Orchestrator entry). The orchestrator is the SOLE cross-subsystem coordination
+  point (no subsystem depends on another; no circular deps). Verified 22/22
+  orchestration + EVERY prior suite re-run green (synthesis 22, dialogue 19,
+  research 21, authoring 23, world 21, formation 26, decision, semantic, review,
+  threads, inquiry, compare, retrieval, reason, qa3, pdf, long-source, graph 15);
+  migration applied + idempotent on a real Postgres 16 schema built from
+  0001–0018; `lint`=0, `build`=0. Supabase `recommendations` persistence is
+  code-complete but credential-pending. README unchanged. No agents, autonomous
+  actions, auto record mutation, content generation, or new AI routes beyond
+  `/api/ai` — the orchestrator only surfaces deterministic opportunities.

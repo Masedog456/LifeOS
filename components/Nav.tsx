@@ -7,6 +7,7 @@ import SyncStatus from "@/components/SyncStatus";
 import AuthControl from "@/components/AuthControl";
 
 const LINKS = [
+  { href: "/orchestrator", label: "Orchestrator" },
   { href: "/", label: "Capture" },
   { href: "/library", label: "Library" },
   { href: "/compare", label: "Compare" },

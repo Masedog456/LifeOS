@@ -27,6 +27,7 @@ import type {
   DialogueSession,
   Tension,
   Synthesis,
+  Recommendation,
   KnowledgeProject,
   Principle,
   ResearchProject,
@@ -63,7 +64,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
   }
 
   async loadState(): Promise<Partial<StoreState> | null> {
-    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks, knowledgeProjects, researchProjects, dialogueSessions, tensions, syntheses] =
+    const [sources, captures, proposals, beliefs, revisions, judgments, quotes, feedback, comparisons, inquiries, megathreads, reflections, practices, reviews, reasonings, embeddings, decisions, formationSessions, concepts, conceptRelationships, principles, frameworks, knowledgeProjects, researchProjects, dialogueSessions, tensions, syntheses, recommendations] =
       await Promise.all([
         this.client.from("sources").select("*"),
         this.client.from("captures").select("*"),
@@ -92,6 +93,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
         this.client.from("dialogue_sessions").select("*").order("created_at", { ascending: false }),
         this.client.from("tensions").select("*").order("created_at", { ascending: false }),
         this.client.from("syntheses").select("*").order("created_at", { ascending: false }),
+        this.client.from("recommendations").select("*").order("created_at", { ascending: false }),
       ]);
 
     const firstError =
@@ -121,7 +123,8 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       researchProjects.error ||
       dialogueSessions.error ||
       tensions.error ||
-      syntheses.error;
+      syntheses.error ||
+      recommendations.error;
     if (firstError) throw new Error(firstError.message);
 
     const quotesBySource = groupBy((quotes.data ?? []) as any[], "source_id");
@@ -162,6 +165,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
       dialogueSessions: (dialogueSessions.data ?? []).map(rowToDialogue),
       tensions: (tensions.data ?? []).map(rowToTension),
       syntheses: (syntheses.data ?? []).map(rowToSynthesis),
+      recommendations: (recommendations.data ?? []).map(rowToRecommendation),
     };
   }
 
@@ -258,6 +262,9 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (w("syntheses") && state.syntheses.length) {
       await this.throwing(this.client.from("syntheses").upsert(state.syntheses.map(synthesisToRow)));
     }
+    if (w("recommendations") && state.recommendations.length) {
+      await this.throwing(this.client.from("recommendations").upsert(state.recommendations.map(recommendationToRow)));
+    }
     this.lastState = "synced";
     this.lastError = undefined;
   }
@@ -320,6 +327,7 @@ export class SupabasePersistenceAdapter implements PersistenceAdapter {
     if (!uid) return;
     // Delete beliefs first (cascades revisions/judgments), then the rest.
     // saved_quotes cascade from sources.
+    await this.throwing(this.client.from("recommendations").delete().eq("user_id", uid));
     await this.throwing(this.client.from("syntheses").delete().eq("user_id", uid));
     await this.throwing(this.client.from("tensions").delete().eq("user_id", uid));
     await this.throwing(this.client.from("dialogue_sessions").delete().eq("user_id", uid));
@@ -1304,6 +1312,45 @@ function rowToSynthesis(r: any): Synthesis {
     outcomes: (r.outcomes ?? []) as Synthesis["outcomes"],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+  };
+}
+
+function recommendationToRow(r: Recommendation) {
+  return {
+    id: r.id,
+    type: r.type,
+    priority: r.priority,
+    confidence: r.confidence,
+    rationale: r.rationale,
+    subsystem: r.subsystem,
+    suggested_action: r.suggestedAction,
+    action_href: r.actionHref ?? null,
+    affected: r.affected,
+    signature: r.signature,
+    created_at: r.createdAt,
+    dismissed: r.dismissed,
+    accepted: r.accepted,
+    completed: r.completed,
+    snoozed_until: r.snoozedUntil ?? null,
+  };
+}
+function rowToRecommendation(r: any): Recommendation {
+  return {
+    id: r.id,
+    type: r.type as Recommendation["type"],
+    priority: (r.priority ?? "low") as Recommendation["priority"],
+    confidence: (r.confidence ?? "unknown") as Recommendation["confidence"],
+    rationale: r.rationale ?? "",
+    subsystem: r.subsystem as Recommendation["subsystem"],
+    suggestedAction: r.suggested_action ?? "",
+    actionHref: r.action_href ?? undefined,
+    affected: (r.affected ?? []) as Recommendation["affected"],
+    signature: r.signature ?? "",
+    createdAt: r.created_at,
+    dismissed: Boolean(r.dismissed),
+    accepted: Boolean(r.accepted),
+    completed: Boolean(r.completed),
+    snoozedUntil: r.snoozed_until ?? undefined,
   };
 }
 

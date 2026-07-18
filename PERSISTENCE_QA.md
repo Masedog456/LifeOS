@@ -171,7 +171,19 @@
     tables, or their RLS. The dialectical engine adds no AI route — tension
     detection and synthesis scaffolding are fully deterministic, and no record is
     mutated automatically.
-19. **Project Settings → API**: copy the **Project URL** and the **anon
+19. Then run `supabase/migrations/0019_cognitive_orchestrator.sql` (LIFEOS-024 —
+    adds the `recommendations` table backing the unified LifeOS Inbox: one row
+    per deterministic recommendation with type, priority, four-value confidence,
+    rationale, originating subsystem, suggested action + `action_href`, a jsonb
+    `affected` array (references, not copies), a stable `signature` for dedupe,
+    and `dismissed`/`accepted`/`completed`/`snoozed_until` lifecycle fields.
+    Own-rows RLS with full CRUD; indexes on user/created, subsystem, type, and
+    signature. Additive and rerunnable (`create table/index if not exists`,
+    guarded policy creation); it does not touch migrations 0001–0018, existing
+    rows, other tables, or their RLS. The orchestrator adds no AI route — every
+    scanner is deterministic — and never mutates knowledge; recommendations are
+    opportunities the user accepts, dismisses, snoozes, or completes.
+20. **Project Settings → API**: copy the **Project URL** and the **anon
    public** key. (Never copy the **service-role** key into this project.)
 
 ### 1b. Supabase authentication (email magic link)
@@ -462,6 +474,30 @@ changes runtime behavior.
       Migration `0018_dialectical_synthesis.sql` applies cleanly and is idempotent
       on a Postgres 16 schema built from 0001–0017; Supabase `tensions`/`syntheses`
       persistence is code-complete and credential-pending like all remote sync.
+- [x] **Cognitive orchestration & active intelligence (LIFEOS-024):** the
+      **LifeOS Inbox** (`/orchestrator`) renders; "Scan now" runs all eight
+      deterministic scanners and aggregates recommendations from distinct
+      subsystems — verified simultaneously: belief→open-a-dialogue (two accepted
+      beliefs on opposing concepts), review→review-a-stale-belief,
+      graph→merge-duplicate-concepts, world→possible-new-principle,
+      formation→repeat-reflection, decision→revisit-a-decision,
+      dialogue→unresolved-tension + import-a-missing-source, research→build-a-
+      synthesis (evidence vs an accepted belief); each card shows priority,
+      subsystem, confidence, affected-object chips and an inspectable rationale;
+      filtering by subsystem narrows the list; **dismiss** removes a
+      recommendation from the active view and it remains under the "dismissed"
+      filter; **snooze** hides it from the active view; a card carries an
+      "Act on this →" jump to the originating object; re-scanning is **idempotent**
+      (deduped by signature); recommendations persist across reload; and the
+      Constitution's beliefs are unchanged — **the orchestrator never modified
+      knowledge**. (22/22 orchestration checks.) **Non-breaking: ALL prior suites
+      re-run green** — synthesis 22, dialogue 19, research 21, authoring 23, world
+      21, formation 26, decision, semantic, review, threads, inquiry, compare,
+      retrieval, reason, qa3, pdf, long-source, graph 15. No new AI route (every
+      scanner is deterministic). Migration `0019_cognitive_orchestrator.sql`
+      applies cleanly and is idempotent on a Postgres 16 schema built from
+      0001–0018; Supabase `recommendations` persistence is code-complete and
+      credential-pending like all remote sync.
 - [x] `npm run lint` = 0, `npm run build` = 0.
 - [x] **Production build** (`next start`) serves `/`, `/library`, `/inbox`,
       `/constitution`, and `/api/ai` (verifies no local-only assumption
